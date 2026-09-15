@@ -27,7 +27,7 @@ Endereço de destino no vocabulário de um canal: lista de endereços de email n
 _Avoid_: destinatário, target, address.
 
 **Source**:
-Origem opcional da Notification — o projeto ou consumidor que pediu o envio (ex.: `valoab`).
+Origem opcional da Notification — o projeto ou consumidor que pediu o envio.
 _Avoid_: origin, caller.
 
 ### Canais e falhas
