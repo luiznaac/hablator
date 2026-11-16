@@ -15,8 +15,8 @@ export function Dashboard() {
     <Panel title="Health">
       <ul className="space-y-1 text-sm">
         {data?.map((check) => (
-          <li key={check.name} className="flex justify-between">
-            <span>{check.name}</span>
+          <li key={check.service_name} className="flex justify-between">
+            <span>{check.service_name}</span>
             <span className={check.is_healthy ? "text-emerald-400" : "text-rose-400"}>
               {formatHealthStatus(check.is_healthy)}
             </span>
