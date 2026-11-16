@@ -1,0 +1,4 @@
+# Container assets must keep LF endings even when checked out on Windows.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+deploy/**       text eol=lf

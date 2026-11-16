@@ -1,0 +1,22 @@
+{
+  "name": "hablator-monorepo",
+  "private": true,
+  "description": "Task runner for the hablator monorepo (backend/ + frontend/). Not a real Node package — just scripts.",
+  "scripts": {
+    "setup": "npm --prefix frontend install && npm run be:sync",
+    "be:sync": "cd backend && uv sync",
+    "be:run": "cd backend && uv run poe run",
+    "be:check": "cd backend && uv run poe check",
+    "be:test": "cd backend && uv run poe test",
+    "fe:dev": "npm --prefix frontend run dev",
+    "fe:build": "npm --prefix frontend run build",
+    "fe:typecheck": "npm --prefix frontend run typecheck",
+    "fe:check": "npm --prefix frontend run check",
+    "check": "npm run be:check && npm run fe:check && npm run fe:build",
+    "db": "docker compose up -d mysql",
+    "db:migrate": "cd backend && uv run poe migrate",
+    "db:generate": "cd backend && uv run poe migrate:generate",
+    "up": "docker compose up --build",
+    "down": "docker compose down"
+  }
+}

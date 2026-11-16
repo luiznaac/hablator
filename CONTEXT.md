@@ -1,45 +1,45 @@
-# Hablator — hub de notificações
+# Hablator — notification hub
 
-Hub de notificações do homelab: recebe pedidos de envio de outros projetos e os entrega por canais, registrando o histórico de cada tentativa de entrega.
+The homelab's notification hub: it receives send requests from other projects and delivers them through channels, recording the history of every delivery attempt.
 
 ## Language
 
-### Envio
+### Sending
 
 **Notification**:
-O pedido de notificação: um por requisição, com conteúdo base (subject/body) e `source` opcional. Gera uma Delivery por canal escolhido; seu status (`succeeded`/`failed`/`pending`) é derivado das deliveries, não persistido.
-_Avoid_: mensagem, message, alerta.
+The notification request: one per HTTP request, with base content (subject/body) and an optional `source`. It produces one Delivery per chosen channel; its status (`succeeded`/`failed`/`pending`) is derived from the deliveries, not persisted.
+_Avoid_: message, alert.
 
 **Delivery**:
-A intenção de entregar uma Notification por um canal, com destinatários, conteúdo resolvido e opções do canal. Tem status e ciclo de vida próprios (`pending`, `in_progress`, `succeeded`, `failed`).
-_Avoid_: envio, job, task.
+The intent to deliver one Notification through one channel, with recipients, resolved content and channel options. It has its own status and lifecycle (`pending`, `in_progress`, `succeeded`, `failed`).
+_Avoid_: send, job, task.
 
 **Attempt**:
-Uma execução de uma Delivery contra um provider, registrada de forma append-only com número sequencial, resultado, erro e classificação de retriabilidade. Uma Delivery pode ter várias.
-_Avoid_: tentativa, try.
+One execution of a Delivery against a provider, recorded append-only with a sequential number, result, error and retriability classification. A Delivery may have several.
+_Avoid_: try.
 
 **Content**:
-O conteúdo efetivamente enviado por uma Delivery: o override específico do canal ou uma cópia do conteúdo base da Notification no momento do envio.
+The content actually sent by a Delivery: the channel-specific override or a copy of the Notification's base content at send time.
 _Avoid_: body, payload, template.
 
 **Recipient**:
-Endereço de destino no vocabulário de um canal: lista de endereços de email no email, exatamente um tópico no push.
-_Avoid_: destinatário, target, address.
+A destination address in a channel's vocabulary: a list of email addresses for email, exactly one topic for push.
+_Avoid_: target, address.
 
 **Source**:
-Origem opcional da Notification — o projeto ou consumidor que pediu o envio.
+The optional origin of a Notification — the project or consumer that requested the send.
 _Avoid_: origin, caller.
 
-### Canais e falhas
+### Channels and failures
 
 **Channel**:
-O meio de entrega: `email`, `push`, `sms` ou `voice`. Só email e push têm provider configurado nesta fase; sms e voice existem apenas no vocabulário.
-_Avoid_: meio, transporte.
+The delivery medium: `email`, `push`, `sms` or `voice`. Only email and push have a configured provider in this phase; sms and voice exist only in the vocabulary.
+_Avoid_: medium, transport.
 
 **Provider**:
-A implementação concreta de um canal que executa uma tentativa (ex.: Mailgun no email, ntfy no push). Fica registrado no Attempt.
+The concrete implementation of a channel that runs one attempt (e.g. Mailgun for email, ntfy for push). It is recorded on the Attempt.
 _Avoid_: gateway, driver.
 
 **Retriable**:
-Classificação de um Attempt falho que pode gerar nova tentativa (timeout, erro de rede, 5xx, 429). Falha não retriable encerra a Delivery.
+The classification of a failed Attempt that may produce another attempt (timeout, network error, 5xx, 429). A non-retriable failure ends the Delivery.
 _Avoid_: transient, recoverable, retryable.

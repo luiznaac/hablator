@@ -1,0 +1,33 @@
+# Rendered by deploy/entrypoint.sh (envsubst) into /etc/nginx/conf.d/hablator.conf.
+# Only ${WEB_PORT} and ${API_PORT} are substituted; nginx's own $variables are left alone.
+
+server {
+    listen      ${WEB_PORT};
+    listen      [::]:${WEB_PORT};
+    server_name _;
+
+    root  /var/www/hablator;
+    index index.html;
+
+    # Hashed asset bundles — safe to cache hard.
+    location /assets/ {
+        expires    1y;
+        add_header Cache-Control "public, immutable";
+        try_files  $uri =404;
+    }
+
+    # API — strip the /api prefix and forward to uvicorn.
+    location /api/ {
+        proxy_pass         http://127.0.0.1:${API_PORT}/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    # Everything else is the SPA; let the client router handle unknown paths.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

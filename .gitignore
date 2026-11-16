@@ -1,5 +1,29 @@
-__pycache__/
-*.py[cod]
+# Python
 .venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.coverage
+coverage.xml
+htmlcov/
 .env
-data/
+docker-compose.override.yml
+dist/
+build/
+*.egg-info/
+/.mcp.json
+/.claude/
+.idea
+
+# Node / frontend (frontend/ also has its own .gitignore)
+node_modules/
+dist-ssr/
+*.local
+.env.*.local
+.vite/
+*.tsbuildinfo
+.DS_Store
+*.log
