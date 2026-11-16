@@ -19,7 +19,7 @@ Uma execução de uma Delivery contra um provider, registrada de forma append-on
 _Avoid_: tentativa, try.
 
 **Content**:
-O conteúdo efetivamente enviado por uma Delivery: o override específico do canal ou uma cópia do conteúdo base da Notification no momento do envio.
+O conteúdo efetivamente enviado por uma Delivery: o override específico do canal ou uma cópia do conteúdo base da Notification no momento do envio. Tem um assunto (`subject`), um corpo em texto plano e, opcionalmente, uma versão HTML desse corpo.
 _Avoid_: body, payload, template.
 
 **Recipient**:
