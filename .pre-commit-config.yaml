@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch
+        args: [--branch, master, --branch, main]
+
+  - repo: local
+    hooks:
+      # `poe check` is the Docker-free fast gate: lint, format-check, types, layer contracts and
+      # the unit lane (the Testcontainers integration suite runs in CI on the PR).
+      - id: test-backend
+        name: check (pytest, unit)
+        entry: sh -c 'cd backend && uv run poe check'
+        language: system
+        files: ^backend/
+        pass_filenames: false
+      - id: test-frontend
+        name: check (typecheck + biome + vitest)
+        entry: sh -c 'cd frontend && npm run check'
+        language: system
+        files: ^frontend/
+        pass_filenames: false

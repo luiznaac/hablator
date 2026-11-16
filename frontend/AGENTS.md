@@ -1,0 +1,76 @@
+# AGENTS.md — React scaffold
+
+A starter skeleton for a project frontend, the same stack as chameidor/portfolio-2/label-follower/ shougong's `frontend/`: **React 19, Vite 6, TypeScript 5.7, Tailwind v4, `@tanstack/react-query` v5, `react-router-dom` v7**. One vertical slice implemented end-to-end — a health-check dashboard, calling `GET /health` through the typed client — same idea as the `kotlin`/`python` scaffolds' worked example. Keep it intact; it's the reference for "how do I wire a new API call through every layer" (client → query hook → page).
+
+Unlike the four generated frontends today, this scaffold ships with **Biome (lint+format) and Vitest wired up from the start** — drift detection in `environments` reports when that has been ported back into them.
+
+## Code map
+
+- [`docs/code-map.md`](docs/code-map.md)
+
+## Layout
+
+```
+src/
+  api/          client.ts (typed fetch wrapper), queries.ts (useQuery hooks), types.ts (DTO mirror)
+  components/   Layout.tsx, Panel.tsx — shared chrome
+  pages/        route-level components (Dashboard.tsx is the worked example)
+  lib/          pure helpers, unit-tested in lib/**/*.test.ts — no React imports here
+```
+
+New API call: typed function in `api/client.ts` → hook in `api/queries.ts` → consumed from a `pages/` component. Don't call `fetch` directly from a component.
+
+## Commands
+
+```bash
+npm run dev         # vite dev server, FRONTEND_DEV_PORT (default 8143)
+npm run typecheck    # tsc -b --noEmit
+npm run lint         # biome check
+npm run lint:fix     # biome check --write
+npm run test          # vitest run (src/lib/** only)
+npm run check         # typecheck + lint + test — run before considering a change done
+npm run build         # tsc -b && vite build
+```
+
+### Fresh worktree setup (sandbox)
+
+A fresh worktree has no `node_modules`, so the first `npm test` fails with `vitest: not found`. In a generated project, this file lands at `frontend/AGENTS.md`; from the monorepo root (its parent), install the lane's dependencies inside the salgadinhos sandbox:
+
+```bash
+node <salgadinhos>/adapters/sandbox/run.mjs --stack node --workspace <repo-root> -- npm --prefix frontend ci
+```
+
+`--stack node` is required because the monorepo root's `package.json` is a dependency-less scripts shim, so the runner's marker detection intentionally does not detect it (its error suggests pointing at `frontend/`). The command mirrors the generated monorepo's `npm run setup`, but the install runs in the sandbox, never on the host — the rule and setup live in `salgadinhos` at `global/AGENTS.md` → "Sandbox for third-party installs" and `docs/salgadinhos/sandbox-bootstrap.md`.
+
+## Tailwind v4 — config lives in CSS
+
+`src/index.css` has `@import "tailwindcss";` and an `@theme` block — there is no `tailwind.config.js`. `vite.config.ts` wires the `@tailwindcss/vite` plugin.
+
+## Dev proxy / deployment base path
+
+`vite.config.ts`'s `base` defaults to `/hablator/` in a production build and `/` in dev; the creation tooling rewrites the production base path from the manifest's `instantiate:` section, and `VITE_BASE` overrides it. The dev server proxies `/api` to `VITE_API_TARGET` (default `http://localhost:8140`) to dodge CORS — a generated project is served under a sub-path behind the unified dashboard reverse proxy.
+
+### Ports
+
+`vite.config.ts` reads `.env` through `loadEnv(mode, process.cwd(), "")` — Vite does not inject `.env` into `process.env`, so a value set only in `.env` is visible here and nowhere else. Both keys fall back to the canonical scaffold numbers below; a generated project's `.env` overrides them with its assigned block.
+
+| Role | Env key | Canonical default |
+|---|---|---|
+| `frontend-dev` (Vite dev server) | `FRONTEND_DEV_PORT` | `8143` |
+| `api` (the `/api` proxy target) | `VITE_API_TARGET` | `http://localhost:8140` |
+
+The dev server is strict (`strictPort: true`): a taken `FRONTEND_DEV_PORT` fails loudly instead of auto-incrementing, so the served URL cannot drift from the block or from an externally registered origin (e.g. an OAuth redirect URI).
+
+## Testing scope
+
+Only `src/lib/**` has tests (`vitest.config.ts` restricts `include` to it) — pure logic, no rendering. No component/render tests yet; don't claim UI coverage beyond what this actually checks.
+
+## Coding standards
+
+- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — "the language-idiom rules the tooling does not enforce"
+
+## Instantiation
+
+New projects are instantiated from this scaffold by the `new-project` script in `environments` — it applies the `hablator` renames (package name, base path, title) from the manifest's `instantiate:` section, stamps the lane sentinel and makes the first commit; the creation skill in `salgadinhos` drives the parameters and the follow-up. Don't rename by hand.
+
+Git/PR conventions: see `salgadinhos/global/AGENTS.md`.

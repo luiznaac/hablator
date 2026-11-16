@@ -1,0 +1,8 @@
+# Lane lineage for the react scaffold: written at creation, advanced only by propagation.
+# `allow` records accepted divergences ({ entry, reason }).
+source: react
+lane: frontend
+applied:
+  revision: 1
+  scaffold_sha: 0399d39291a6f21ab5be5cd657e2a4cec71a154c
+allow: []
