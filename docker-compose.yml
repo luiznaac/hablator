@@ -61,13 +61,14 @@ services:
       - MYSQL__USER=root
       - MYSQL__PASSWORD=
       - MYSQL__DATABASE=hablator
-      # Email channel — the bare names the legacy proxy documented (and the `/send-email`
-      # adapter's env fallback reads). API_AUTH has no default in code, so an unset value
-      # fails the boot loudly; export it to run this stack.
-      - API_URL
-      - API_AUTH
-      - FROM_EMAIL
-      - BCC_EMAIL
+      # Email channel (`MAILGUN__*`) and the new API's Bearer token. MAILGUN__API_KEY and
+      # AUTH__API_TOKEN have no default in code, so an unset value fails the boot loudly;
+      # export both to run this stack.
+      - MAILGUN__API_KEY
+      - MAILGUN__API_URL
+      - MAILGUN__FROM
+      - MAILGUN__BCC
+      - AUTH__API_TOKEN
     # Lets the OTLP endpoint default reach a Collector running on the host.
     extra_hosts:
       - "host.docker.internal:host-gateway"

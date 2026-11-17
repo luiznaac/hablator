@@ -38,10 +38,11 @@ target_metadata = Base.metadata
 
 def _mysql_url() -> str:
     # Imported lazily so `alembic` commands that don't touch the DB (e.g. `alembic history`)
-    # never require MYSQL__* to be set.
-    from hablator.application.settings import Settings
+    # never require MYSQL__* to be set. `DatabaseSettings` is the DB half only: migrations must
+    # not require the app's provider key or API token.
+    from hablator.application.settings import DatabaseSettings
 
-    return Settings().mysql.url
+    return DatabaseSettings().mysql.url
 
 
 def run_migrations_offline() -> None:

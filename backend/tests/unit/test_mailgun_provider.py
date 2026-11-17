@@ -9,6 +9,7 @@ from pytest_httpserver import HTTPServer
 from hablator.gateway.configuration.http_client import build_http_client
 from hablator.gateway.email.mailgun_provider import MailgunEmailProvider
 from hablator.usecase.channel.model import Channel, ChannelMessage, Content, ErrorKind, Recipient
+from hablator.usecase.commons.exceptions import DomainError
 
 _FROM = "hablator@example.com"
 _BCC = "archive@example.com"
@@ -19,7 +20,7 @@ def _provider(httpserver: HTTPServer) -> MailgunEmailProvider:
     return MailgunEmailProvider(
         client,
         api_url=httpserver.url_for("/messages"),
-        api_auth="key-secret",
+        api_key="key-secret",
         from_email=_FROM,
         bcc_email=_BCC,
     )
@@ -134,7 +135,7 @@ async def test_transport_errors_are_normalized(error: httpx.RequestError, kind: 
     provider = MailgunEmailProvider(
         client,
         api_url="https://api.mailgun.invalid/v3/dom/messages",
-        api_auth="key",
+        api_key="key",
         from_email=_FROM,
         bcc_email=_BCC,
     )
@@ -143,3 +144,129 @@ async def test_transport_errors_are_normalized(error: httpx.RequestError, kind: 
 
     assert result.error_kind is kind
     assert result.provider_status is None
+
+
+async def test_html_only_when_the_plain_part_is_empty(httpserver: HTTPServer) -> None:
+    httpserver.expect_request("/messages", method="POST").respond_with_data("queued", status=200)
+    provider = _provider(httpserver)
+
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(Recipient("ops@example.com"),),
+        content=Content(subject="s", body_text="", body_html="<p>only html</p>"),
+        options={},
+        config={},
+    )
+    await provider.send(message)
+
+    form = httpserver.log[0][0].form
+    assert form["html"] == "<p>only html</p>"
+    assert "text" not in form
+
+
+def test_resolve_fills_recipients_from_the_provider_config_default(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(),
+        content=Content(subject="s", body_text="b"),
+        options={},
+        config={"recipients": ["default@example.com"]},
+    )
+
+    resolved = provider.prepare(message)
+
+    assert tuple(recipient.address for recipient in resolved.recipients) == ("default@example.com",)
+
+
+def test_resolve_keeps_explicit_recipients(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(Recipient("ops@example.com"),),
+        content=Content(subject="s", body_text="b"),
+        options={},
+        config={"recipients": ["default@example.com"]},
+    )
+
+    resolved = provider.prepare(message)
+
+    assert tuple(recipient.address for recipient in resolved.recipients) == ("ops@example.com",)
+
+
+def test_resolve_rejects_email_options(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(Recipient("ops@example.com"),),
+        content=Content(subject="s", body_text="b"),
+        options={"priority": 3},
+        config={},
+    )
+
+    with pytest.raises(DomainError):
+        provider.prepare(message)
+
+
+def test_resolve_rejects_a_request_with_no_recipients_and_no_default(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(),
+        content=Content(subject="s", body_text="b"),
+        options={},
+        config={},
+    )
+
+    with pytest.raises(DomainError):
+        provider.prepare(message)
+
+
+def test_resolve_rejects_more_than_fifty_default_recipients(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(),
+        content=Content(subject="s", body_text="b"),
+        options={},
+        config={"recipients": [f"ops{index}@example.com" for index in range(51)]},
+    )
+
+    with pytest.raises(DomainError):
+        provider.prepare(message)
+
+
+def test_resolve_rejects_an_unknown_provider_config_key(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+    message = ChannelMessage(
+        channel=Channel.EMAIL,
+        recipients=(Recipient("ops@example.com"),),
+        content=Content(subject="s", body_text="b"),
+        options={},
+        config={"sender": "typo@example.com"},
+    )
+
+    with pytest.raises(DomainError):
+        provider.prepare(message)
+
+
+@pytest.mark.parametrize("status", [420, 429])
+async def test_rate_limit_statuses_normalize_to_http_status(httpserver: HTTPServer, status: int) -> None:
+    httpserver.expect_request("/messages", method="POST").respond_with_data("rate limited", status=status)
+    provider = _provider(httpserver)
+
+    result = await provider.send(_message())
+
+    assert result.error_kind is ErrorKind.HTTP_STATUS
+    assert result.provider_status == status
+
+
+async def test_a_generic_client_error_is_an_http_status_failure(httpserver: HTTPServer) -> None:
+    httpserver.expect_request("/messages", method="POST").respond_with_data("bad request", status=400)
+    provider = _provider(httpserver)
+
+    result = await provider.send(_message())
+
+    assert result.error_kind is ErrorKind.HTTP_STATUS
+    assert result.provider_status == 400
+    assert result.error_message == "bad request"

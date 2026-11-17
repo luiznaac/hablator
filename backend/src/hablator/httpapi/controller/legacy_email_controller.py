@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Request, Response
+import fastapi
 
 from hablator.httpapi.legacy_text import strip_html
 from hablator.usecase.channel.model import Channel, Content, Recipient
+from hablator.usecase.commons.exceptions import DomainError
 from hablator.usecase.notification.model import ChannelRequest, NotificationRequest
 from hablator.usecase.notification.service import NotificationService
 
@@ -29,11 +30,11 @@ class LegacyEmailController:
     def __init__(self, notification_service: NotificationService) -> None:
         self._service = notification_service
 
-    def router(self) -> APIRouter:
-        router = APIRouter(tags=["legacy"])
+    def router(self) -> fastapi.APIRouter:
+        router = fastapi.APIRouter(tags=["legacy"])
 
         @router.post("/send-email")
-        async def send_email(request: Request) -> Response:
+        async def send_email(request: fastapi.Request) -> fastapi.Response:
             payload = await _parse_payload(request)
             if payload is None:
                 return _legacy_json(400, {"error": "Invalid JSON"})
@@ -48,17 +49,22 @@ class LegacyEmailController:
                 return _legacy_json(400, {"error": "'subject' and 'text' are required"})
 
             content = Content(subject=subject, body_text=strip_html(text), body_html=text)
-            outcome = await self._service.send(
-                NotificationRequest(
-                    content=content,
-                    channels=(
-                        ChannelRequest(
-                            channel=_LEGACY_CHANNEL,
-                            recipients=tuple(Recipient(address=email) for email in emails),
+            try:
+                outcome = await self._service.send(
+                    NotificationRequest(
+                        content=content,
+                        channels=(
+                            ChannelRequest(
+                                channel=_LEGACY_CHANNEL,
+                                recipients=tuple(Recipient(address=email) for email in emails),
+                            ),
                         ),
-                    ),
+                    )
                 )
-            )
+            except DomainError as error:
+                # The legacy endpoint keeps its own `{"error": ...}` 400 shape for a rejected
+                # request; the new API's envelope never leaks here.
+                return _legacy_json(400, {"error": str(error)})
 
             delivery = outcome.deliveries[0]
             if delivery.succeeded:
@@ -68,7 +74,7 @@ class LegacyEmailController:
         return router
 
 
-async def _parse_payload(request: Request) -> dict[str, object] | None:
+async def _parse_payload(request: fastapi.Request) -> dict[str, object] | None:
     try:
         payload = await request.json()
     except ValueError:
@@ -78,6 +84,6 @@ async def _parse_payload(request: Request) -> dict[str, object] | None:
     return payload
 
 
-def _legacy_json(status: int, body: dict[str, object]) -> Response:
+def _legacy_json(status: int, body: dict[str, object]) -> fastapi.Response:
     """Serialize exactly like the legacy proxy: `json.dumps` defaults, no charset in the header."""
-    return Response(content=json.dumps(body), status_code=status, media_type="application/json")
+    return fastapi.Response(content=json.dumps(body), status_code=status, media_type="application/json")

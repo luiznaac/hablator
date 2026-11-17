@@ -15,6 +15,7 @@ import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
+from pytest_httpserver import HTTPServer
 from testcontainers.mysql import MySqlContainer
 
 from hablator.application.container import Container
@@ -66,6 +67,23 @@ def migrated_mysql(mysql: MySqlContainer) -> MySqlContainer:
             else:
                 os.environ[key] = value
     return mysql
+
+
+@pytest.fixture
+def mailgun_settings(settings: Settings, httpserver: HTTPServer) -> Settings:
+    """Point the Mailgun adapter at the per-test stub server."""
+    return settings.model_copy(
+        update={
+            "mailgun": settings.mailgun.model_copy(
+                update={
+                    "api_url": httpserver.url_for("/messages"),
+                    "api_key": "dev-hablator-mailgun-key",
+                    "from_email": "hablator@hablator.invalid",
+                    "bcc_email": "hablator-archive@hablator.invalid",
+                }
+            )
+        }
+    )
 
 
 @pytest.fixture

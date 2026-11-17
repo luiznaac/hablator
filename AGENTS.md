@@ -31,7 +31,7 @@ Third-party install/build (`uv sync`, `npm ci`, the image build) runs in the sal
 
 All backend config is env vars (`pydantic-settings`, nested keys with `__`); the reference is [backend/AGENTS.md](backend/AGENTS.md) §Configuration, and the versioned [backend/.env.example](backend/.env.example) records the env vars and their dev fixtures. Copy it to `backend/.env` (gitignored) — pydantic-settings loads that file for `cd backend && uv run poe run`. `docker compose up` reads the repo-root environment instead, for the `API_*` / `OTEL_*` values it passes through.
 
-No real secret value is committed or defaulted in code: `API_AUTH` (the email provider secret) has no default and its absence fails the boot loudly; `MYSQL__PASSWORD` defaults to empty. The single secrets doc is `docs/salgadinhos/secrets.md` in the salgadinhos repo.
+No real secret value is committed or defaulted in code: `MAILGUN__API_KEY` (the email provider secret) and `AUTH__API_TOKEN` (the new API's Bearer token) have no default and their absence fails the boot loudly; `MYSQL__PASSWORD` defaults to empty. The single secrets doc is `docs/salgadinhos/secrets.md` in the salgadinhos repo.
 
 ## Docker
 

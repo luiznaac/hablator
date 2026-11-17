@@ -10,6 +10,8 @@ from opentelemetry.metrics import Meter
 from hablator.usecase.channel.model import Channel, ErrorKind
 from hablator.usecase.commons.logging import get_logger
 
+_MISCONFIGURED_STATUSES = frozenset({401, 403})
+
 
 class AttemptTelemetry:
     def __init__(self, meter: Meter) -> None:
@@ -35,16 +37,27 @@ class AttemptTelemetry:
         provider_status: int | None,
         error_kind: ErrorKind | None,
         delivery_id: int | None,
+        attempt_number: int,
         duration_seconds: float,
     ) -> None:
-        attributes: dict[str, str | bool] = {
-            "channel": str(channel),
-            "provider": provider,
-            "outcome": "succeeded" if succeeded else "failed",
-            "retriable": retriable,
-        }
-        self._attempts.add(1, attributes)
-        self._duration.record(duration_seconds, attributes)
+        outcome = "succeeded" if succeeded else "failed"
+        self._attempts.add(
+            1,
+            {
+                "channel": str(channel),
+                "provider": provider,
+                "outcome": outcome,
+                "retriable": retriable,
+            },
+        )
+        self._duration.record(
+            duration_seconds,
+            {
+                "channel": str(channel),
+                "provider": provider,
+                "outcome": outcome,
+            },
+        )
 
         event = "channel.attempt.succeeded" if succeeded else "channel.attempt.failed"
         log_attributes: dict[str, object] = {
@@ -53,9 +66,13 @@ class AttemptTelemetry:
             "provider.status": provider_status,
             "error.kind": str(error_kind) if error_kind is not None else None,
             "delivery.id": delivery_id,
+            "attempt.number": attempt_number,
             "duration": duration_seconds,
         }
         if succeeded:
             self._log.info(event, **log_attributes)
+        elif provider_status in _MISCONFIGURED_STATUSES:
+            # 401/403 is a broken credential or account, not a transient provider problem.
+            self._log.error(event, **log_attributes)
         else:
             self._log.warning(event, **log_attributes)

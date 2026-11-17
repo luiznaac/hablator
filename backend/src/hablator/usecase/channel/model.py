@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+MAX_RECIPIENTS = 50
+
 
 class Channel(StrEnum):
     """The delivery medium. SMS and voice exist only in the vocabulary in this phase."""

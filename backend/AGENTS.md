@@ -86,7 +86,7 @@ uv run poe test             # everything
 
 ## Configuration
 
-`src/hablator/application/settings.py` (pydantic-settings, `APP_ENV` profile). Every value has a default except the provider secret `API_AUTH`; a gitignored `.env` may override locally (see `.env.example`). Nested env vars use `__`:
+`src/hablator/application/settings.py` (pydantic-settings, `APP_ENV` profile). Every value has a default except the two secrets `MAILGUN__API_KEY` and `AUTH__API_TOKEN`; a gitignored `.env` may override locally (see `.env.example`). Nested env vars use `__`:
 
 | Key | Env var | Default |
 |---|---|---|
@@ -99,15 +99,16 @@ uv run poe test             # everything
 | `mysql.password` | `MYSQL__PASSWORD` | empty |
 | `mysql.database` | `MYSQL__DATABASE` | `hablator` |
 | `gateways.app.host` | `GATEWAYS__APP__HOST` | unset — derived from `HTTP_PORT` |
-| `api_url` | `API_URL` | the Mailgun v3 send endpoint on the `.invalid` fixture domain |
-| `api_auth` | `API_AUTH` | **none — required** (the provider secret) |
-| `from_email` | `FROM_EMAIL` | the `.invalid` fixture sender |
-| `bcc_email` | `BCC_EMAIL` | the `.invalid` fixture archive address |
+| `mailgun.api_key` | `MAILGUN__API_KEY` | **none — required** (the provider secret) |
+| `mailgun.api_url` | `MAILGUN__API_URL` | the Mailgun v3 send endpoint on the `.invalid` fixture domain |
+| `mailgun.from_email` | `MAILGUN__FROM` | the `.invalid` fixture sender |
+| `mailgun.bcc_email` | `MAILGUN__BCC` | the `.invalid` fixture archive address |
+| `auth.api_token` | `AUTH__API_TOKEN` | **none — required** (the new API's Bearer token) |
 | `telemetry.service_name` | `OTEL_SERVICE_NAME` | `hablator` (the lane token) |
 | `telemetry.endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` in dev; **required in prod** |
 | `telemetry.console` | `TELEMETRY_CONSOLE` | `false` (dev-only console exporters) |
 
-`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.email` is the same shape for the email channel: the bare `API_URL` / `API_AUTH` / `FROM_EMAIL` / `BCC_EMAIL` names the legacy proxy documented, kept so a deploy (and the legacy `/send-email` adapter's env fallback) needs no change.
+`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.mailgun` is the typed reader of the email channel's `MAILGUN__*` keys and `Settings.auth` the API's `AUTH__API_TOKEN`; `DatabaseSettings` is the DB-only reader Alembic uses so a migration never requires the app's secrets.
 
 ### Ports (canonical family table)
 

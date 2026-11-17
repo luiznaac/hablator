@@ -32,18 +32,6 @@ _VALID_PAYLOAD = {
 
 
 @pytest.fixture
-def mailgun_settings(settings: Settings, httpserver: HTTPServer) -> Settings:
-    return settings.model_copy(
-        update={
-            "api_url": httpserver.url_for("/messages"),
-            "api_auth": "dev-hablator-mailgun-key",
-            "from_email": _FROM,
-            "bcc_email": _BCC,
-        }
-    )
-
-
-@pytest.fixture
 async def legacy_container(mailgun_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
     instance = Container(mailgun_settings)
     try:
@@ -197,3 +185,18 @@ async def test_a_streamed_request_body_is_accepted(legacy_client: httpx.AsyncCli
     response = await legacy_client.post("/send-email", content=_chunks(), headers={"content-type": "application/json"})
 
     assert response.status_code == 200
+
+
+async def test_too_many_recipients_keep_the_legacy_error_shape(legacy_client: httpx.AsyncClient) -> None:
+    payload = {
+        "emails": [f"ops{index}@example.com" for index in range(51)],
+        "subject": "Backup finished",
+        "text": "<p>done</p>",
+    }
+
+    response = await legacy_client.post("/send-email", json=payload)
+
+    assert response.status_code == 400
+    body = response.json()
+    assert "error" in body
+    assert "code" not in body

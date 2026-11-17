@@ -36,6 +36,9 @@ class _SessionCheckingProvider:
     def __init__(self) -> None:
         self.called = False
 
+    def prepare(self, message: ChannelMessage) -> ChannelMessage:
+        return message
+
     async def send(self, message: ChannelMessage) -> ProviderResult:
         with pytest.raises(RuntimeError):
             current_session()

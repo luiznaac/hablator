@@ -29,16 +29,16 @@ schema to be reachable at boot. The database is **not** in the image.
    `"${HABLATOR_PORT:-6903}:8080"`. The web UI is a second, optional publish
    (`"${HABLATOR_WEB_PORT:-6904}:8081"`); only `6903` is required for the legacy contract.
    The old `:80` mapping is gone.
-3. **Environment** — keep `API_AUTH` / `API_URL` / `FROM_EMAIL` / `BCC_EMAIL` (the legacy adapter's
-   env fallback), and add:
+3. **Environment** — set `MAILGUN__API_KEY` / `MAILGUN__API_URL` / `MAILGUN__FROM` / `MAILGUN__BCC`
+   (the email channel's env keys and the legacy adapter's fallback), and add:
    - `APP_ENV=prod`, `LOG_LEVEL=INFO`
    - `HTTP_PORT=8080`, `API_PORT=8080`, `WEB_PORT=8081`
    - `MYSQL__HOST`, `MYSQL__PORT=3306`, `MYSQL__USER`, `MYSQL__PASSWORD`, `MYSQL__DATABASE=hablator`
      (point at the shared MySQL the other stacks use)
    - `OTEL_SERVICE_NAME=hablator`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`,
      `OTEL_SEMCONV_STABILITY_OPT_IN=http,database`
-   - `AUTH__API_TOKEN` is **not** required yet — the new API is a later PR; it becomes required
-     when that lands.
+   - `AUTH__API_TOKEN` — the new API's Bearer token, required now that `POST /notifications`
+     and `GET /notifications/{id}` ship.
 4. **Database** — create the `hablator` database with `utf8mb4` / `utf8mb4_0900_ai_ci` and
    register it in `restic_mysql_databases` (the migration creates the tables; the database itself
    is iac's).
