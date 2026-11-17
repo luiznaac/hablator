@@ -1,6 +1,6 @@
 # AGENTS.md — React scaffold
 
-A starter skeleton for a project frontend, the same stack as chameidor/portfolio-2/label-follower/ shougong's `frontend/`: **React 19, Vite 6, TypeScript 5.7, Tailwind v4, `@tanstack/react-query` v5, `react-router-dom` v7**. One vertical slice implemented end-to-end — a health-check dashboard, calling `GET /health` through the typed client — same idea as the `kotlin`/`python` scaffolds' worked example. Keep it intact; it's the reference for "how do I wire a new API call through every layer" (client → query hook → page).
+A starter skeleton for a project frontend, the same stack as chameidor/portfolio-2/label-follower/ shougong's `frontend/`: **React 19, Vite 6, TypeScript 5.7, Tailwind v4, `@tanstack/react-query` v5, `react-router-dom` v7**. One vertical slice implemented end-to-end — the health check, calling `GET /health` through the typed client — same idea as the `kotlin`/`python` scaffolds' worked example. Keep it intact; it's the reference for "how do I wire a new API call through every layer" (client → query hook → page). In this project the slice lives in the console's `HealthPanel`; the scaffold's demo dashboard was replaced by the three-pane debug console.
 
 Unlike the four generated frontends today, this scaffold ships with **Biome (lint+format) and Vitest wired up from the start** — drift detection in `environments` reports when that has been ported back into them.
 
@@ -12,9 +12,9 @@ Unlike the four generated frontends today, this scaffold ships with **Biome (lin
 
 ```
 src/
-  api/          client.ts (typed fetch wrapper), queries.ts (useQuery hooks), types.ts (DTO mirror)
-  components/   Layout.tsx, Panel.tsx — shared chrome
-  pages/        route-level components (Dashboard.tsx is the worked example)
+  api/          client.ts (typed fetch wrapper), queries.ts (useQuery/useMutation hooks), types.ts (DTO mirror)
+  components/   Layout.tsx, Panel.tsx — shared chrome; console/ — presentational atoms and form controls
+  pages/        route-level components (Console.tsx and its console/ panels consume the query hooks)
   lib/          pure helpers, unit-tested in lib/**/*.test.ts — no React imports here
 ```
 
@@ -49,6 +49,8 @@ node <salgadinhos>/adapters/sandbox/run.mjs --stack node --workspace <repo-root>
 ## Dev proxy / deployment base path
 
 `vite.config.ts`'s `base` defaults to `/hablator/` in a production build and `/` in dev; the creation tooling rewrites the production base path from the manifest's `instantiate:` section, and `VITE_BASE` overrides it. The dev server proxies `/api` to `VITE_API_TARGET` (default `http://localhost:8140`) to dodge CORS — a generated project is served under a sub-path behind the unified dashboard reverse proxy.
+
+The SPA never holds the API token. The image's nginx proxy injects `Authorization: Bearer ${AUTH__API_TOKEN}` for `/api/`; in dev the same header comes from `frontend/.env` (`AUTH__API_TOKEN`, the committed fixture matches `backend/.env.example`) through the Vite proxy's `headers`. The browser bundle never reads it.
 
 ### Ports
 

@@ -22,7 +22,9 @@ reachable `NTFY__BASE_URL`.
 
 The `api` service runs with `APP_ENV=test`: the same app, but a single uvicorn process (no reload)
 and in-memory telemetry, so no Collector is needed. The three secrets it requires have no default
-in code; the start command supplies the dev fixtures inline.
+in code; the start command supplies the dev fixtures inline. The `web` service's `/api` proxy
+injects the same Bearer token the image's nginx does, from the same dev fixture, so the SPA
+carries no token.
 
 ## mysql
 
@@ -61,7 +63,7 @@ in code; the start command supplies the dev fixtures inline.
 
 | | |
 |---|---|
-| start | FRONTEND_DEV_PORT=8143 npm run dev |
+| start | AUTH__API_TOKEN=dev-hablator-api-token FRONTEND_DEV_PORT=8143 npm run dev |
 | ready | http://localhost:8143/ |
 | port  | 8143 |
 | stop  | pkill -f "$(pwd)/node_modules/.bin/vite" \|\| true |

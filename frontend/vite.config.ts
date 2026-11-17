@@ -10,6 +10,9 @@ import { defineConfig, loadEnv } from "vite";
 // `process.env`, so reading it directly silently ignored the file.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  // Dev parity with the image's nginx proxy: the SPA never holds the token, so the dev proxy
+  // attaches the same Bearer header from frontend/.env.
+  const apiToken = env.AUTH__API_TOKEN;
 
   return {
     base: env.VITE_BASE ?? (mode === "production" ? "/hablator/" : "/"),
@@ -26,6 +29,7 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_TARGET ?? "http://localhost:8140",
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, ""),
+          ...(apiToken ? { headers: { Authorization: `Bearer ${apiToken}` } } : {}),
         },
       },
     },
