@@ -1,6 +1,6 @@
 # Hablator — notification hub
 
-The homelab's notification hub: it receives send requests from other projects and delivers them through channels, recording the history of every delivery attempt.
+The domain glossary: the vocabulary the code, the tracker and the docs share. Terms only, no implementation detail.
 
 ## Language
 

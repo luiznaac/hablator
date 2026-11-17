@@ -2,69 +2,72 @@
 
 Notification hub for the homelab: it takes send requests from other projects and delivers them through channels, recording the history of every delivery attempt.
 
-| Path         | What                                                                        |
-| ------------ | --------------------------------------------------------------------------- |
-| [`backend/`](backend/)   | FastAPI + hexagonal service (uv, SQLAlchemy/MySQL, Alembic). See [backend/README.md](backend/README.md) and [backend/AGENTS.md](backend/AGENTS.md). |
-| [`frontend/`](frontend/) | React + Vite SPA — the debug UI. See [frontend/AGENTS.md](frontend/AGENTS.md). |
+![The debug console: a send form, the delivery history with succeeded and failed notifications, and the health and channel panels](docs/assets/debug-ui.png)
 
-The domain glossary is [`CONTEXT.md`](CONTEXT.md). The frontend's `src/api/types.ts` mirrors the backend's `httpapi/schema.py`; keep them in sync in the same change — that's the reason these two live in one repo.
+## Quickstart
 
-The legacy `POST /send-email` contract is served by the backend's compatibility adapter over the hub's email channel. Golden fixtures pin its responses byte-for-byte, so existing consumers (valoab via chameidor) need no change; the old single-file `hablator.py` proxy is gone.
-
-## Dev
+Prerequisites: Node 22, `uv`, and Docker (for MySQL).
 
 ```bash
-npm run setup      # npm install in frontend/ + uv sync in backend/
-npm run db         # start MySQL (docker) for the backend
-npm run db:migrate # apply Alembic migrations
+npm run setup       # npm install in frontend/ + uv sync in backend/
+npm run db          # start MySQL on host 8142
+npm run db:migrate  # apply the Alembic migrations
 ```
 
 Then, in two shells:
 
 ```bash
-npm run be:run     # backend  -> http://localhost:8140
-npm run fe:dev     # frontend -> http://localhost:8143  (proxies /api -> :8140)
+npm run be:run      # API      -> http://localhost:8140
+npm run fe:dev      # debug UI -> http://localhost:8143 (proxies /api to the API)
 ```
 
-## Ports
-
-Local host ports are hablator's assigned block, recorded in [`.salgadinhos/ports.json`](.salgadinhos/ports.json). Only the published side of a compose mapping varies — container-internal ports stay fixed.
-
-| Role | Host port | Env key | Container-internal |
-| --- | --- | --- | --- |
-| `api` | `8140` | `HTTP_PORT` | `8080` (`API_PORT`) |
-| `web` (combined image: SPA + `/api` proxy) | `8141` | `WEB_HOST_PORT` | `8081` (`WEB_PORT`) |
-| `mysql` | `8142` | `MYSQL__PORT` | `3306` |
-| `frontend-dev` (Vite) | `8143` | `FRONTEND_DEV_PORT` | — |
-
-A gitignored `.env` may override a host port locally; the committed defaults above apply to a fresh clone. The block is dev-only: the published image keeps the canonical `8080`/`3306` unless a port is set explicitly. The DB port recipe is `docker compose port mysql 3306`.
-
-## Docker
-
-One image holds both processes — `uvicorn` (API) and `nginx` (the built SPA, which also reverse-proxies `/api` to uvicorn and injects the API Bearer token, so the browser never holds it) — supervised by `supervisord`, on separate ports. The database is **not** in the image; the schema is applied by `python scripts/migrate.py` from `deploy/entrypoint.sh` before the app starts.
-
-The app runs as `APP_ENV=prod`, so it requires an OTLP endpoint, both provider secrets and the API Bearer token. Export `OTEL_EXPORTER_OTLP_ENDPOINT` (for a Collector on the host, `http://host.docker.internal:4318`), `MAILGUN__API_KEY` (plus `MAILGUN__API_URL` / `MAILGUN__FROM` / `MAILGUN__BCC` when they differ from the fixtures), `NTFY__BASE_URL` / `NTFY__TOKEN` and `AUTH__API_TOKEN`. Without them the app's boot fails loudly; the `mysql` service alone still starts. The push topic is non-secret provider config written through `PUT /channels/push`; the ntfy server itself is the operator's [provisioning checklist](docs/ntfy-provisioning.md).
-
-```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
-export MAILGUN__API_KEY=dev-hablator-mailgun-key
-export NTFY__BASE_URL=http://localhost:2586
-export NTFY__TOKEN=dev-hablator-ntfy-token
-export AUTH__API_TOKEN=dev-hablator-api-token
-docker compose up --build     # app + MySQL, full stack
-#   UI   -> http://localhost:8141
-#   API  -> http://localhost:8140
-docker compose up -d mysql    # just the DB (host :8142), for local `cd backend && uv run poe run`
-```
-
-**Publishing:** after CI passes on a push to `master`, the dedicated `.github/workflows/docker-publish.yml` (triggered on `workflow_run` completion) builds and pushes `luiznaac/hablator:latest` and `:v<run-number>` (a sequential build number) to Docker Hub. Needs repo variables `DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`.
+The local ports are hablator's assigned block, recorded in [`.salgadinhos/ports.json`](.salgadinhos/ports.json): `api` 8140, `web` 8141, `mysql` 8142, `frontend-dev` 8143. Only the published side of a compose mapping varies — container-internal ports stay fixed — and a gitignored `.env` may override a host port locally.
 
 ## Checks
 
 ```bash
-npm run check      # backend `poe check` + frontend `npm run check` + frontend build
+npm run be:check   # backend: ruff, mypy, import-linter, unit tests
+npm run be:test    # backend: all tests (the integration suite needs a Docker daemon)
+npm run fe:check   # frontend: typecheck, lint, unit tests
+npm run fe:build   # frontend: production build
+npm run check      # the canonical all-checks command, mirroring pre-commit (excludes be:test)
 ```
 
-CI (`.github/workflows/ci.yml`) runs the backend (full `poe test`, integration suite included) and frontend jobs independently; `.github/workflows/docker-publish.yml` then builds the image only when that CI run concludes green on `master`.
+## How it fits
 
-`package.json` at the repo root is only a script shim (no dependencies) — the real toolchains are `uv` in `backend/` and `npm` in `frontend/`.
+The hub is the family's single outbound channel: sibling projects call it instead of holding provider credentials themselves, and chameidor drives the legacy `POST /send-email` path. The seam that matters is the wire contract — that adapter keeps existing callers byte-compatible, and the new API's DTOs are mirrored by hand in `frontend/src/api/types.ts`. Navigation: [docs/code-map.md](docs/code-map.md) indexes both lanes.
+
+## Limits
+
+- The container path — one image, `supervisord`, nginx-injected Bearer token, Docker Hub publish — is not part of the Quickstart: [Docker runbook](docs/runbooks/docker.md).
+- The push channel needs a reachable ntfy server and a configured topic; an unconfigured push channel answers a validation error: [ntfy provisioning](docs/ntfy-provisioning.md).
+- Retry is modeled and classified here, executed by chameidor; this repo records attempts, it does not re-attempt.
+- `sms` and `voice` exist only in the channel vocabulary — no provider is wired.
+- The backend's integration suite needs a Docker daemon and never auto-skips.
+- The deploy cutover to the combined image lands in the `iac` repo: [cutover note](docs/deploy-cutover.md).
+
+## Docs
+
+- [AGENTS.md — hablator monorepo](AGENTS.md) — open it when you need the repo conventions, tooling and the one cross-cutting rule.
+- [Hablator — notification hub](CONTEXT.md) — open it when a domain term needs the project's exact vocabulary.
+- [Code map](docs/code-map.md) — open it when you need a module, the files that matter or the seam a change crosses.
+- [Code map (backend)](backend/docs/code-map.md) — open it when locating a backend module, its files or the seam a change crosses.
+- [Code map (frontend)](frontend/docs/code-map.md) — open it when locating a frontend module or its entry points.
+- [AGENTS.md — Python scaffold](backend/AGENTS.md) — open it before touching `backend/`.
+- [Coding standards — Python lane](backend/CODING_STANDARDS.md) — open it when writing Python idioms the tooling does not enforce.
+- [Hablator HTTP API](backend/docs/api.md) — open it for the endpoint and payload reference.
+- [Observability — logging & metrics](backend/docs/observability.md) — open it before adding or changing anything that emits telemetry.
+- [AGENTS.md — React scaffold](frontend/AGENTS.md) — open it before touching `frontend/`.
+- [Coding standards — React lane](frontend/CODING_STANDARDS.md) — open it when writing React/TypeScript idioms the tooling does not enforce.
+- [Decisions](docs/adr/) — open it when you need the reasoning behind an irreversible choice.
+- [Acceptance runbook](docs/runbooks/acceptance.md) — open it to boot the stack the way acceptance does.
+- [Docker runbook](docs/runbooks/docker.md) — open it to build the image or publish it.
+- [Deploy cutover](docs/deploy-cutover.md) — open it when the `iac` stack moves to the combined image.
+- [ntfy provisioning checklist](docs/ntfy-provisioning.md) — open it when standing up the push provider.
+
+## Related projects
+
+- [chameidor](https://github.com/luiznaac/chameidor) — the retry executor and the consumer that drives the legacy send path.
+- [iac](https://github.com/luiznaac/iac) — the homelab deploy that runs this image.
+- [environments](https://github.com/luiznaac/environments) — the scaffolds both lanes were instantiated from.
+- [salgadinhos](https://github.com/luiznaac/salgadinhos) — the family conventions and agent tooling.

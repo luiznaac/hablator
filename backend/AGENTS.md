@@ -4,7 +4,7 @@ Development guidelines for anyone (human, agent, or tool) working in this scaffo
 
 ## What this is
 
-Not an application. A **starter skeleton** for a Python backend service, deliberately the same architecture as the sibling [`kotlin/`](../kotlin) scaffold (which itself is the scaffold behind [chameidor](../../chameidor/AGENTS.md) and [portfolio-2](../../portfolio-2/AGENTS.md)). One vertical slice is implemented end-to-end — a **health check**. Keep it intact and working; it's the reference example for "how do I wire a new port/adapter".
+Not an application. A **starter skeleton** for a Python backend service, deliberately the same architecture as the sibling [`kotlin/` scaffold](https://github.com/luiznaac/environments/tree/master/kotlin) (which itself is the scaffold behind [chameidor](https://github.com/luiznaac/chameidor/blob/master/AGENTS.md) and [portfolio-2](https://github.com/luiznaac/portfolio-2/blob/master/AGENTS.md)). One vertical slice is implemented end-to-end — a **health check**. Keep it intact and working; it's the reference example for "how do I wire a new port/adapter".
 
 ## Code map
 

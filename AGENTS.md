@@ -19,6 +19,7 @@ Third-party install/build (`uv sync`, `npm ci`, the image build) runs in the sal
 
 ## Code map
 
+- [docs/code-map.md](docs/code-map.md) — the repo index and the cross-lane seam
 - [backend/docs/code-map.md](backend/docs/code-map.md)
 - [frontend/docs/code-map.md](frontend/docs/code-map.md)
 
@@ -35,7 +36,7 @@ No real secret value is committed or defaulted in code: `MAILGUN__API_KEY` (the 
 
 ## Docker
 
-One image (repo-root `Dockerfile`, multi-stage) ships backend + frontend together: `supervisord` runs `uvicorn` (API, `API_PORT`/8080) and `nginx` (`deploy/nginx.conf.template` — serves the built SPA on `WEB_PORT`/8081 and reverse-proxies `/api` → uvicorn). The SPA holds no token: nginx injects `Authorization: Bearer ${AUTH__API_TOKEN}` for `/api/` (the template and `entrypoint.sh`'s `envsubst` carry the variable), and the Vite dev proxy mirrors it from `frontend/.env`. Those container-internal ports are fixed, and the image pins `MYSQL__PORT=3306` for its external database. No DB in the image. `docker-compose.yml` at the root adds MySQL for full-stack / DB-only local runs, publishing the host side on hablator's assigned block — `api` 8140, `web` 8141, `mysql` 8142 — recorded in [`.salgadinhos/ports.json`](.salgadinhos/ports.json) and listed in [README.md](README.md#ports); the Vite dev server uses `frontend-dev` 8143. The schema comes from `backend/alembic/versions/*.py`, applied by `python scripts/migrate.py` from `deploy/entrypoint.sh` before the app starts — see [backend/AGENTS.md](backend/AGENTS.md) §Database migrations. The dedicated `.github/workflows/docker-publish.yml` runs on `workflow_run` when CI completes green on `master` (the family pattern, `environments#15`) and pushes `luiznaac/hablator:latest` + `:v<run-number>`.
+One image (repo-root `Dockerfile`, multi-stage) ships backend + frontend together: `supervisord` runs `uvicorn` (API, `API_PORT`/8080) and `nginx` (`deploy/nginx.conf.template` — serves the built SPA on `WEB_PORT`/8081 and reverse-proxies `/api` → uvicorn). The SPA holds no token: nginx injects `Authorization: Bearer ${AUTH__API_TOKEN}` for `/api/` (the template and `entrypoint.sh`'s `envsubst` carry the variable), and the Vite dev proxy mirrors it from `frontend/.env`. Those container-internal ports are fixed, and the image pins `MYSQL__PORT=3306` for its external database. No DB in the image. `docker-compose.yml` at the root adds MySQL for full-stack / DB-only local runs, publishing the host side on hablator's assigned block — `api` 8140, `web` 8141, `mysql` 8142 — recorded in [`.salgadinhos/ports.json`](.salgadinhos/ports.json) and listed in [README.md](README.md#quickstart); the Vite dev server uses `frontend-dev` 8143. The schema comes from `backend/alembic/versions/*.py`, applied by `python scripts/migrate.py` from `deploy/entrypoint.sh` before the app starts — see [backend/AGENTS.md](backend/AGENTS.md) §Database migrations. The dedicated `.github/workflows/docker-publish.yml` runs on `workflow_run` when CI completes green on `master` (the family pattern, `environments#15`) and pushes `luiznaac/hablator:latest` + `:v<run-number>`; the build-and-publish steps are in [docs/runbooks/docker.md](docs/runbooks/docker.md).
 
 ## Acceptance surface
 
@@ -48,7 +49,7 @@ One image (repo-root `Dockerfile`, multi-stage) ships backend + frontend togethe
 `frontend-dev` (`http://localhost:8143`), whose `/api` proxy forwards to the API. Acceptance boots
 that stack, drives the API over HTTP and the SPA through the browser surface, then tears it down.
 
-**Runbook**: [docs/acceptance/runbook.md](docs/acceptance/runbook.md) — the bootstrap-only
+**Runbook**: [docs/runbooks/acceptance.md](docs/runbooks/acceptance.md) — the bootstrap-only
 per-service `start`/`ready`/`stop` commands, in start order.
 
 ## Scaffold lineage
@@ -58,3 +59,9 @@ Each lane is a project instantiated from `environments` by `tools/new-project.mj
 ## Issue tracker
 
 Issues live as GitHub issues. The current effort is charted as a wayfinder map: [Hablator as a notification hub](https://github.com/luiznaac/hablator/issues/1).
+
+## Documentation
+
+- [Family documentation standard](https://github.com/luiznaac/salgadinhos/blob/master/docs/documentation-standard.md) — the doc set, README spine and repo-page rules this repo follows.
+- [`refresh-docs` skill](https://github.com/luiznaac/salgadinhos/tree/master/skills/refresh-docs) — the audit and refresh instrument for those rules.
+- Run the audit when a change hits the standard's change-kind matrix; the README's `## Docs` is the document index.
