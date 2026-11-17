@@ -21,8 +21,8 @@ application  ->  httpapi     ->  usecase  <-  persistence
 
 One installable package, `src/hablator/`, with one sub-package per layer:
 
-- **`usecase/`** — the core. Domain models, ports (`IHealthChecker`, `IHealthGateway`, `ITransactionTemplate`), and services — see [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for their shape. Depends on **nothing** infrastructural — `import-linter` forbids importing `fastapi`, `sqlalchemy`, `httpx`, `pydantic`, `uvicorn` here. `commons/` holds genuinely cross-cutting helpers only (`time.IClock`, `logging.get_logger`, `asyncx.map_async`, `exceptions`).
-- **`persistence/`** — SQLAlchemy 2 async implementations of `usecase` ports against MySQL. `configuration/transaction.py` implements `ITransactionTemplate`; repositories call `current_session()` to get the session bound to the running transaction. No tables yet — `configuration/base.py` has the `DeclarativeBase` to extend.
+- **`usecase/`** — the core. Domain models, ports (`IHealthChecker`, `IHealthGateway`, `ITransactionTemplate`, the hub's `INotificationRepository`/`IDeliveryRepository`/`IProviderConfigRepository`/`IRetryPolicyRepository`/`IDeliveryDispatcher`/`IChannelProvider`) and services — see [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for their shape. The hub lives in the slices `channel/` (vocabulary, one provider port, registry, retriability), `notification/` (the aggregate, derived status, lifecycle `transition`, history query) and `delivery/` (the dispatcher); the static test `tests/unit/test_architecture.py` enforces the `delivery -> notification -> channel` DAG. Depends on **nothing** infrastructural — `import-linter` forbids importing `fastapi`, `sqlalchemy`, `httpx`, `pydantic`, `uvicorn` here. `commons/` holds genuinely cross-cutting helpers only (`time.IClock`, `logging.get_logger`, `asyncx.map_async`, `exceptions`).
+- **`persistence/`** — SQLAlchemy 2 async implementations of `usecase` ports against MySQL. `configuration/transaction.py` implements `ITransactionTemplate`; repositories call `current_session()` to get the session bound to the running transaction. The five hub tables are typed `Mapped[...]` entities in `notification/entity.py` (notification, delivery, attempt) and `channel/entity.py` (provider_config, retry_policy); `notification/repository.py` and `channel/repository.py` implement the ports, and `configuration/timestamps.py` is the naive-UTC/aware-UTC boundary. `configuration/base.py` holds the `DeclarativeBase`.
 - **`gateway/`** — outbound HTTP (httpx). One shared `AsyncClient` from `configuration/http_client.py`, injected everywhere. `AppHealthGateway` + `HttpClientHealthCheck` are the worked example.
 - **`httpapi/`** — FastAPI. Each controller is a class with a `router() -> APIRouter` method (`IController`, the `ControllerTemplate` analogue). `configuration/server.py` mounts every controller the composition root passes it and installs the domain-exception handlers. DTOs live in `schema.py`.
 - **`application/`** — the composition root. `settings.py` (pydantic-settings, `APP_ENV` profile), `container.py`, `boot.py`.
@@ -64,7 +64,7 @@ Alembic's own files (`alembic.ini`, `alembic/env.py`, `alembic/script.py.mako`, 
 
 ## Testing
 
-Kotest (`pytest`), fixtures in `tests/fixtures.py`. Tests live in `tests/unit/` (no Docker) and `tests/integration/` (spins MySQL via Testcontainers).
+Kotest (`pytest`), fixtures in `tests/fixtures.py`. Tests live in `tests/unit/` (no Docker) and `tests/integration/` (spins MySQL 9.4.0 via Testcontainers, migrates it to head). The integration harness probes the Docker daemon and exits non-zero with an actionable message when it is absent — it never auto-skips.
 
 ```bash
 uv run poe test-unit        # unit tests only (no Docker)

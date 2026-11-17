@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from hablator.usecase.channel.model import Channel, ChannelMessage, ProviderConfig, ProviderResult
+from hablator.usecase.channel.model import (
+    Channel,
+    ChannelMessage,
+    ProviderConfig,
+    ProviderResult,
+    RetryPolicy,
+)
 
 
 class IChannelProvider(Protocol):
@@ -17,6 +23,18 @@ class IChannelProvider(Protocol):
 
 
 class IProviderConfigRepository(Protocol):
-    """Reads a channel's non-secret provider config; `None` means the channel is unconfigured."""
+    """Reads and writes a channel's non-secret provider config; `None` means unconfigured."""
 
     async def get(self, channel: Channel) -> ProviderConfig | None: ...
+
+    async def upsert(self, config: ProviderConfig) -> ProviderConfig: ...
+
+    async def delete(self, channel: Channel) -> None: ...
+
+
+class IRetryPolicyRepository(Protocol):
+    """Reads and writes a channel's retry policy. Modeled now, unused in v1."""
+
+    async def get(self, channel: Channel) -> RetryPolicy | None: ...
+
+    async def upsert(self, policy: RetryPolicy) -> RetryPolicy: ...

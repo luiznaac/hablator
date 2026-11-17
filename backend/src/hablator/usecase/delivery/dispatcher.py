@@ -6,7 +6,6 @@ call itself runs with no session bound, so a slow provider never holds a databas
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime
 
 from hablator.usecase.channel.classify import classify
@@ -25,6 +24,7 @@ from hablator.usecase.notification.model import (
     Delivery,
     DeliveryOutcome,
     DeliveryStatus,
+    transition,
 )
 
 _log = get_logger(__name__)
@@ -52,11 +52,9 @@ class DeliveryDispatcher:
 
     async def dispatch(self, delivery: Delivery) -> DeliveryOutcome:
         provider_name, provider_config = await self._resolve_provider(delivery.channel)
-        provider = self._registry.get(delivery.channel, provider_name)
-        if provider is None:
-            raise DomainError(f"No provider '{provider_name}' is registered for channel '{delivery.channel}'")
+        provider = self._registry.resolve(delivery.channel, provider_name)
 
-        in_progress = replace(delivery, status=DeliveryStatus.IN_PROGRESS, updated_at=self._clock.now())
+        in_progress = transition(delivery, DeliveryStatus.IN_PROGRESS, now=self._clock.now())
         await self._transaction.execute(lambda: self._repository.update_delivery(in_progress))
 
         result = await self._attempt(provider, provider_name, delivery, provider_config)
@@ -64,10 +62,10 @@ class DeliveryDispatcher:
         finished_at = self._clock.now()
         attempt = self._record_attempt(delivery, result, in_progress.updated_at, finished_at)
         succeeded = result.is_success
-        final = replace(
+        final = transition(
             in_progress,
-            status=DeliveryStatus.SUCCEEDED if succeeded else DeliveryStatus.FAILED,
-            updated_at=finished_at,
+            DeliveryStatus.SUCCEEDED if succeeded else DeliveryStatus.FAILED,
+            now=finished_at,
         )
         await self._transaction.execute(lambda: self._persist_attempt(attempt, final))
 

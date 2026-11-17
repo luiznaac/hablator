@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from hablator.usecase.channel.model import Channel, Content, Recipient
+from hablator.usecase.commons.exceptions import InvalidArgumentError, InvalidTransitionError
 from hablator.usecase.notification.model import (
     Attempt,
     AttemptOutcome,
@@ -13,6 +16,8 @@ from hablator.usecase.notification.model import (
     DeliveryStatus,
     NotificationStatus,
     derive_status,
+    derive_status_from_statuses,
+    transition,
 )
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -83,3 +88,63 @@ def test_delivery_outcome_reports_success_from_its_delivery_status() -> None:
 
     assert succeeded.succeeded is True
     assert failed.succeeded is False
+
+
+def _later() -> datetime:
+
+    return _NOW + timedelta(minutes=5)
+
+
+def test_pending_transitions_to_in_progress() -> None:
+    moved = transition(_delivery(DeliveryStatus.PENDING), DeliveryStatus.IN_PROGRESS, now=_later())
+
+    assert moved.status is DeliveryStatus.IN_PROGRESS
+    assert moved.updated_at == _later()
+    assert moved.next_attempt_at is None
+
+
+def test_in_progress_transitions_to_a_terminal_status() -> None:
+    succeeded = transition(_delivery(DeliveryStatus.IN_PROGRESS), DeliveryStatus.SUCCEEDED, now=_later())
+    failed = transition(_delivery(DeliveryStatus.IN_PROGRESS), DeliveryStatus.FAILED, now=_later())
+
+    assert succeeded.status is DeliveryStatus.SUCCEEDED
+    assert failed.status is DeliveryStatus.FAILED
+
+
+def test_in_progress_returns_to_pending_with_the_next_attempt() -> None:
+    moved = transition(
+        _delivery(DeliveryStatus.IN_PROGRESS),
+        DeliveryStatus.PENDING,
+        now=_later(),
+        next_attempt_at=_later(),
+    )
+
+    assert moved.status is DeliveryStatus.PENDING
+    assert moved.next_attempt_at == _later()
+
+
+def test_in_progress_returning_to_pending_requires_a_next_attempt() -> None:
+    with pytest.raises(InvalidArgumentError):
+        transition(_delivery(DeliveryStatus.IN_PROGRESS), DeliveryStatus.PENDING, now=_later())
+
+
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [
+        (DeliveryStatus.PENDING, DeliveryStatus.SUCCEEDED),
+        (DeliveryStatus.PENDING, DeliveryStatus.FAILED),
+        (DeliveryStatus.SUCCEEDED, DeliveryStatus.IN_PROGRESS),
+        (DeliveryStatus.SUCCEEDED, DeliveryStatus.FAILED),
+        (DeliveryStatus.FAILED, DeliveryStatus.IN_PROGRESS),
+        (DeliveryStatus.FAILED, DeliveryStatus.PENDING),
+    ],
+)
+def test_forbidden_lifecycle_transitions(current: DeliveryStatus, target: DeliveryStatus) -> None:
+    with pytest.raises(InvalidTransitionError):
+        transition(_delivery(current), target, now=_later(), next_attempt_at=_later())
+
+
+def test_derive_status_from_statuses_matches_derive_status() -> None:
+    statuses = [DeliveryStatus.SUCCEEDED, DeliveryStatus.FAILED]
+
+    assert derive_status_from_statuses(statuses) is derive_status([_delivery(status) for status in statuses])

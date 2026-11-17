@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from hablator.usecase.channel.model import Channel
 from hablator.usecase.channel.ports import IChannelProvider
+from hablator.usecase.commons.exceptions import UnknownProviderError
 
 
 class ChannelRegistry:
@@ -19,3 +20,9 @@ class ChannelRegistry:
 
     def get(self, channel: Channel, provider_name: str) -> IChannelProvider | None:
         return self._providers.get((channel, provider_name))
+
+    def resolve(self, channel: Channel, provider_name: str) -> IChannelProvider:
+        provider = self.get(channel, provider_name)
+        if provider is None:
+            raise UnknownProviderError(str(channel), provider_name)
+        return provider

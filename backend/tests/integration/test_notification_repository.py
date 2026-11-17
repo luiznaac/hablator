@@ -20,6 +20,7 @@ from hablator.usecase.notification.model import (
     Delivery,
     DeliveryStatus,
     Notification,
+    NotificationStatus,
 )
 from tests.fixtures import clear_hub_tables
 
@@ -127,3 +128,39 @@ async def test_provider_config_repository_returns_none_for_an_unconfigured_chann
     config = await container.transaction_template.execute(lambda: ProviderConfigRepository().get(Channel.PUSH))
 
     assert config is None
+
+
+async def test_get_reads_the_notification_with_its_deliveries_and_attempts(container: Container) -> None:
+    repository = NotificationRepository()
+    notification, deliveries = await container.transaction_template.execute(
+        lambda: repository.create(_notification(), [_delivery()])
+    )
+    assert notification.id is not None
+    attempt = Attempt(
+        id=None,
+        delivery_id=deliveries[0].id,
+        attempt_number=1,
+        outcome=AttemptOutcome.SUCCEEDED,
+        provider="mailgun",
+        provider_status=200,
+        error_kind=None,
+        error_message=None,
+        retriable=False,
+        started_at=_NOW,
+        finished_at=_NOW,
+    )
+    persisted_attempt = await container.transaction_template.execute(lambda: repository.add_attempt(attempt))
+
+    detail = await container.transaction_template.execute(lambda: repository.get(notification.id))
+
+    assert detail is not None
+    assert detail.notification == notification
+    assert detail.deliveries[0].delivery == deliveries[0]
+    assert detail.deliveries[0].attempts == (persisted_attempt,)
+    assert detail.status is NotificationStatus.PENDING
+
+
+async def test_get_returns_none_for_an_unknown_notification(container: Container) -> None:
+    repository = NotificationRepository()
+
+    assert await container.transaction_template.execute(lambda: repository.get(999_999)) is None
