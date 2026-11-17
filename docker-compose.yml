@@ -4,7 +4,7 @@
 #   docker compose up --build        # everything
 #   docker compose up -d mysql       # just the DB (for local `cd backend && uv run poe run`)
 #
-# The published image (docker.io/luiznaac/hablator-python) is the `app` service only — in
+# The published image (docker.io/luiznaac/hablator) is the `app` service only — in
 # production the database is a separate, externally provisioned container.
 #
 # The schema is NOT seeded here: backend/alembic/versions/*.py is applied by
@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: luiznaac/hablator-python:latest
+    image: luiznaac/hablator:latest
     restart: unless-stopped
     depends_on:
       mysql:

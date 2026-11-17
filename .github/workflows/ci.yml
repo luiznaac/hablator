@@ -78,7 +78,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: luiznaac/hablator-python
+          images: luiznaac/hablator
           tags: |
             type=raw,value=latest
             type=raw,value=v${{ github.run_number }}
