@@ -19,6 +19,7 @@ from testcontainers.mysql import MySqlContainer
 
 from hablator.application.container import Container
 from hablator.application.settings import MySqlConfig, Settings
+from tests.docker_probe import DockerUnavailableError, require_docker
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -26,6 +27,14 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         item.add_marker("integration")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _docker_daemon() -> None:
+    try:
+        require_docker()
+    except DockerUnavailableError as error:
+        pytest.exit(str(error), returncode=1)
 
 
 @pytest.fixture(scope="session")

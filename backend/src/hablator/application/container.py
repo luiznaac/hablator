@@ -31,7 +31,7 @@ from hablator.httpapi.configuration.server import build_app, install_request_con
 from hablator.httpapi.controller.base import IController
 from hablator.httpapi.controller.health_controller import HealthController
 from hablator.httpapi.controller.legacy_email_controller import LegacyEmailController
-from hablator.persistence.channel.repository import ProviderConfigRepository
+from hablator.persistence.channel.repository import ProviderConfigRepository, RetryPolicyRepository
 from hablator.persistence.configuration.database import build_engine, build_session_factory
 from hablator.persistence.configuration.transaction import SqlAlchemyTransactionTemplate
 from hablator.persistence.health.mysql_health_check import MySqlConnectionHealthCheck
@@ -91,6 +91,7 @@ class Container:
         self.attempt_telemetry = AttemptTelemetry(self.telemetry.meter)
         self.notification_repository = NotificationRepository()
         self.provider_config_repository = ProviderConfigRepository()
+        self.retry_policy_repository = RetryPolicyRepository()
         self.delivery_dispatcher = DeliveryDispatcher(
             clock=self.clock,
             transaction=self.transaction_template,

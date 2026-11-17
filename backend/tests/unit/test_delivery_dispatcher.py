@@ -126,7 +126,12 @@ async def test_an_unregistered_provider_is_a_domain_error() -> None:
 
 async def test_provider_config_is_passed_to_the_provider() -> None:
     provider = FakeChannelProvider()
-    config = ProviderConfig(channel=Channel.EMAIL, provider="mailgun", config={"from": "x@example.com"})
+    config = ProviderConfig(
+        channel=Channel.EMAIL,
+        provider="mailgun",
+        config={"from": "x@example.com"},
+        updated_at=_NOW,
+    )
     dispatcher, _ = _dispatcher(provider, configs={Channel.EMAIL: config})
 
     await dispatcher.dispatch(_delivery())

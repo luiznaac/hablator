@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 
@@ -50,6 +51,17 @@ class ProviderConfig:
     channel: Channel
     provider: str
     config: Mapping[str, object]
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class RetryPolicy:
+    """The per-channel retry policy. Modeled now, unused in v1 (chameidor executes retries)."""
+
+    channel: Channel
+    max_attempts: int
+    backoff_seconds: tuple[int, ...]
+    updated_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

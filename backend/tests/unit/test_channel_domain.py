@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from hablator.usecase.channel.classify import classify
 from hablator.usecase.channel.model import (
     Channel,
@@ -12,6 +14,7 @@ from hablator.usecase.channel.model import (
     Recipient,
 )
 from hablator.usecase.channel.registry import ChannelRegistry
+from hablator.usecase.commons.exceptions import UnknownProviderError
 
 
 def _result(
@@ -79,3 +82,20 @@ def test_channel_message_carries_opaque_recipients_content_options_and_config() 
 
     assert message.recipients[0].address == "ops@example.com"
     assert message.config["from"] == "hablator@example.com"
+
+
+def test_registry_resolve_returns_a_registered_provider() -> None:
+    registry = ChannelRegistry()
+    mailgun = _StubProvider("mailgun", Channel.EMAIL)
+    registry.register(mailgun)
+
+    assert registry.resolve(Channel.EMAIL, "mailgun") is mailgun
+
+
+@pytest.mark.parametrize(("channel", "name"), [(Channel.EMAIL, "ntfy"), (Channel.PUSH, "mailgun")])
+def test_registry_resolve_rejects_an_unregistered_pair(channel: Channel, name: str) -> None:
+    registry = ChannelRegistry()
+    registry.register(_StubProvider("mailgun", Channel.EMAIL))
+
+    with pytest.raises(UnknownProviderError):
+        registry.resolve(channel, name)

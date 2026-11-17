@@ -11,7 +11,11 @@ from typing import Protocol
 from hablator.usecase.notification.model import (
     Delivery,
     DeliveryOutcome,
+    HistoryQuery,
     Notification,
+    NotificationDetail,
+    NotificationSummary,
+    Page,
 )
 
 
@@ -19,6 +23,10 @@ class INotificationRepository(Protocol):
     async def create(
         self, notification: Notification, deliveries: Sequence[Delivery]
     ) -> tuple[Notification, list[Delivery]]: ...
+
+    async def get(self, notification_id: int) -> NotificationDetail | None: ...
+
+    async def history(self, query: HistoryQuery) -> Page[NotificationSummary]: ...
 
 
 class IDeliveryDispatcher(Protocol):
