@@ -135,9 +135,22 @@ class InMemoryNotificationRepository:
         )
         return NotificationDetail(notification=notification, deliveries=details)
 
+    async def get_delivery(self, delivery_id: int) -> DeliveryDetail | None:
+        delivery = self.deliveries.get(delivery_id)
+        if delivery is None:
+            return None
+        return DeliveryDetail(
+            delivery=delivery,
+            attempts=tuple(attempt for attempt in self.attempts if attempt.delivery_id == delivery_id),
+        )
+
     async def update_delivery(self, delivery: Delivery) -> None:
         assert delivery.id is not None
         self.deliveries[delivery.id] = delivery
+
+    async def next_attempt_number(self, delivery_id: int) -> int:
+        numbers = [attempt.attempt_number for attempt in self.attempts if attempt.delivery_id == delivery_id]
+        return max(numbers, default=0) + 1
 
     async def add_attempt(self, attempt: Attempt) -> Attempt:
         attempt_id = self._next_attempt_id
@@ -212,7 +225,54 @@ def failing_result(status: int = 500, *, error_kind: ErrorKind = ErrorKind.HTTP_
     )
 
 
+API_TOKEN = "dev-hablator-api-token"
+API_AUTH = {"Authorization": f"Bearer {API_TOKEN}"}
+
 _HUB_TABLES = ("attempt", "delivery", "notification", "provider_config", "retry_policy")
+
+
+async def insert_notification(
+    engine: AsyncEngine,
+    *,
+    created_at: datetime,
+    source: str | None = "valoab",
+    subject: str = "Backup finished",
+    deliveries: Sequence[tuple[str, str]] = (("email", "succeeded"),),
+) -> tuple[int, list[int]]:
+    """Insert a notification and its deliveries directly, returning their ids.
+
+    Lets a test control `created_at` and every delivery status; everything else is written through
+    the API. `deliveries` is a sequence of `(channel, status)` pairs.
+    """
+    async with engine.begin() as connection:
+        result = await connection.execute(
+            text(
+                "INSERT INTO notification (source, subject, body_text, created_at) "
+                "VALUES (:source, :subject, 'body', :created_at)"
+            ),
+            {"source": source, "subject": subject, "created_at": created_at},
+        )
+        notification_id = int(result.lastrowid or 0)
+        delivery_ids: list[int] = []
+        for channel, status in deliveries:
+            inserted = await connection.execute(
+                text(
+                    "INSERT INTO delivery "
+                    "(notification_id, channel, status, recipients, subject, body_text, created_at, updated_at) "
+                    "VALUES (:notification_id, :channel, :status, :recipients, :subject, 'body', "
+                    ":created_at, :created_at)"
+                ),
+                {
+                    "notification_id": notification_id,
+                    "channel": channel,
+                    "status": status,
+                    "recipients": '["ops@example.com"]',
+                    "subject": subject,
+                    "created_at": created_at,
+                },
+            )
+            delivery_ids.append(int(inserted.lastrowid or 0))
+    return notification_id, delivery_ids
 
 
 async def clear_hub_tables(engine: AsyncEngine) -> None:

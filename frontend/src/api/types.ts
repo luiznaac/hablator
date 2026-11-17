@@ -93,6 +93,22 @@ export interface ChannelConfigResponse {
   updated_at: string | null;
 }
 
+export interface NotificationSummaryResponse {
+  id: number;
+  source: string | null;
+  subject: string | null;
+  status: NotificationStatus;
+  created_at: string;
+  channels: Channel[];
+}
+
+export interface NotificationPageResponse {
+  items: NotificationSummaryResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface ErrorItem {
   field: string;
   message: string;

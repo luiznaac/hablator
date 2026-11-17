@@ -19,6 +19,7 @@ import starlette.types
 
 from hablator.httpapi.controller.base import IController
 from hablator.usecase.commons.exceptions import (
+    DeliveryNotRetriableError,
     DomainError,
     InvalidArgumentError,
     PayloadTooLargeError,
@@ -170,6 +171,12 @@ def _install_exception_handlers(app: fastapi.FastAPI) -> None:
     async def _invalid(request: fastapi.Request, exc: InvalidArgumentError) -> fastapi.responses.JSONResponse:
         return _problem(request, 400, "invalid_argument", str(exc))
 
+    @app.exception_handler(DeliveryNotRetriableError)
+    async def _not_retriable(
+        request: fastapi.Request, exc: DeliveryNotRetriableError
+    ) -> fastapi.responses.JSONResponse:
+        return _problem(request, 409, "conflict", str(exc))
+
     @app.exception_handler(DomainError)
     async def _domain(request: fastapi.Request, exc: DomainError) -> fastapi.responses.JSONResponse:
         return _problem(request, 422, "domain_error", str(exc))
@@ -202,7 +209,8 @@ def _install_exception_handlers(app: fastapi.FastAPI) -> None:
             }
             for error in exc.errors()
         ]
-        return _problem(request, 422, "validation_error", "The request body is invalid", errors=errors)
+        detail = "The query parameters are invalid" if _is_query_error(exc) else "The request body is invalid"
+        return _problem(request, 422, "validation_error", detail, errors=errors)
 
     @app.exception_handler(starlette.exceptions.HTTPException)
     async def _http(
@@ -213,9 +221,13 @@ def _install_exception_handlers(app: fastapi.FastAPI) -> None:
         return _problem(request, exc.status_code, code, str(exc.detail))
 
 
+def _is_query_error(exc: fastapi.exceptions.RequestValidationError) -> bool:
+    return any(error.get("loc", ())[:1] == ("query",) for error in exc.errors())
+
+
 def _field_path(loc: object) -> str:
     parts = [str(part) for part in loc] if isinstance(loc, (list, tuple)) else [str(loc)]
-    if parts and parts[0] == "body":
+    if parts and parts[0] in ("body", "query"):
         parts = parts[1:]
     return ".".join(parts) or "body"
 

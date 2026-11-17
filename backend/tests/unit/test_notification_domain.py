@@ -7,7 +7,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from hablator.usecase.channel.model import Channel, Content, Recipient
-from hablator.usecase.commons.exceptions import InvalidArgumentError, InvalidTransitionError
+from hablator.usecase.commons.exceptions import (
+    DeliveryNotRetriableError,
+    InvalidArgumentError,
+    InvalidTransitionError,
+)
 from hablator.usecase.notification.model import (
     Attempt,
     AttemptOutcome,
@@ -17,6 +21,7 @@ from hablator.usecase.notification.model import (
     NotificationStatus,
     derive_status,
     derive_status_from_statuses,
+    reopen_for_retry,
     transition,
 )
 
@@ -142,6 +147,27 @@ def test_in_progress_returning_to_pending_requires_a_next_attempt() -> None:
 def test_forbidden_lifecycle_transitions(current: DeliveryStatus, target: DeliveryStatus) -> None:
     with pytest.raises(InvalidTransitionError):
         transition(_delivery(current), target, now=_later(), next_attempt_at=_later())
+
+
+def test_reopen_for_retry_moves_a_failed_delivery_back_to_pending() -> None:
+    reopened = reopen_for_retry(_delivery(DeliveryStatus.FAILED), now=_later())
+
+    assert reopened.status is DeliveryStatus.PENDING
+    assert reopened.next_attempt_at is None
+    assert reopened.updated_at == _later()
+
+
+def test_reopen_for_retry_leaves_a_pending_delivery_pending() -> None:
+    reopened = reopen_for_retry(_delivery(DeliveryStatus.PENDING), now=_later())
+
+    assert reopened.status is DeliveryStatus.PENDING
+    assert reopened.updated_at == _later()
+
+
+@pytest.mark.parametrize("status", [DeliveryStatus.IN_PROGRESS, DeliveryStatus.SUCCEEDED])
+def test_reopen_for_retry_rejects_a_delivery_that_is_not_retriable(status: DeliveryStatus) -> None:
+    with pytest.raises(DeliveryNotRetriableError):
+        reopen_for_retry(_delivery(status), now=_later())
 
 
 def test_derive_status_from_statuses_matches_derive_status() -> None:

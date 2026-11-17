@@ -54,6 +54,14 @@ class UnknownProviderError(DomainError):
         self.provider = provider
 
 
+class DeliveryNotRetriableError(DomainError):
+    """A manual retry the delivery's lifecycle does not allow: in progress or already succeeded."""
+
+    def __init__(self, status: str) -> None:
+        super().__init__(f"A delivery in status {status!r} cannot be retried")
+        self.status = status
+
+
 class InvalidTransitionError(DomainError):
     """A delivery status move the lifecycle does not allow."""
 

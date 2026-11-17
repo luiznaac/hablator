@@ -12,7 +12,11 @@ from datetime import datetime
 from enum import StrEnum
 
 from hablator.usecase.channel.model import Channel, Content, ErrorKind, Recipient
-from hablator.usecase.commons.exceptions import InvalidArgumentError, InvalidTransitionError
+from hablator.usecase.commons.exceptions import (
+    DeliveryNotRetriableError,
+    InvalidArgumentError,
+    InvalidTransitionError,
+)
 
 
 class DeliveryStatus(StrEnum):
@@ -162,6 +166,23 @@ def transition(
     return replace(delivery, status=target, next_attempt_at=next_attempt_at, updated_at=now)
 
 
+_MANUALLY_RETRIABLE: frozenset[DeliveryStatus] = frozenset({DeliveryStatus.PENDING, DeliveryStatus.FAILED})
+
+
+def reopen_for_retry(delivery: Delivery, *, now: datetime) -> Delivery:
+    """Prepare a delivery for a manual retry: a failed one reopens as pending, a pending one stays.
+
+    This is the manual-retry counterpart of `transition`: the retry is synchronous, so no
+    `next_attempt_at` is scheduled, and `transition`'s scheduling invariant does not apply.
+
+    Raises:
+        DeliveryNotRetriableError: when the delivery is in progress or already succeeded.
+    """
+    if delivery.status not in _MANUALLY_RETRIABLE:
+        raise DeliveryNotRetriableError(delivery.status.value)
+    return replace(delivery, status=DeliveryStatus.PENDING, next_attempt_at=None, updated_at=now)
+
+
 @dataclass(frozen=True, slots=True)
 class DeliveryDetail:
     """A delivery plus its append-only attempts, as read for a notification detail."""
@@ -202,6 +223,11 @@ class Page[T]:
     offset: int
 
 
+MIN_PAGE_LIMIT = 1
+MAX_PAGE_LIMIT = 100
+DEFAULT_PAGE_LIMIT = 20
+
+
 @dataclass(frozen=True, slots=True)
 class HistoryQuery:
     """History filters; `created_after` is inclusive and `created_before` exclusive."""
@@ -211,5 +237,5 @@ class HistoryQuery:
     status: NotificationStatus | None = None
     created_after: datetime | None = None
     created_before: datetime | None = None
-    limit: int = 20
+    limit: int = DEFAULT_PAGE_LIMIT
     offset: int = 0

@@ -14,12 +14,12 @@ from pytest_httpserver import HTTPServer
 from sqlalchemy import text
 
 from hablator.application.container import Container
+from tests.fixtures import API_AUTH
 
-_TOKEN = "dev-hablator-api-token"
+_AUTH = API_AUTH
 _QUEUED = '{"id": "<20261116.1@hablator.invalid>", "message": "Queued. Thank you."}'
 _FROM = "hablator@hablator.invalid"
 _BCC = "hablator-archive@hablator.invalid"
-_AUTH = {"Authorization": f"Bearer {_TOKEN}"}
 
 _VALID = {
     "source": "valoab",

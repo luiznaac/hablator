@@ -16,6 +16,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from pytest_httpserver import HTTPServer
+from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.mysql import MySqlContainer
 
 from hablator.application.container import Container
@@ -139,3 +140,8 @@ async def api_client(api_container: Container) -> AsyncIterator[httpx.AsyncClien
     transport = httpx.ASGITransport(app=api_container.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
         yield http_client
+
+
+@pytest.fixture
+def engine(api_container: Container) -> AsyncEngine:
+    return api_container.engine

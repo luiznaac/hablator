@@ -7,18 +7,34 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hablator.usecase.channel.model import Channel, ChannelMessage, Content, ProviderConfig, Recipient
+from hablator.usecase.channel.model import (
+    Channel,
+    ChannelMessage,
+    Content,
+    ProviderConfig,
+    ProviderResult,
+    Recipient,
+)
 from hablator.usecase.channel.registry import ChannelRegistry
-from hablator.usecase.commons.exceptions import DomainError, InvalidArgumentError, ResourceNotFoundError
+from hablator.usecase.commons.exceptions import (
+    DeliveryNotRetriableError,
+    DomainError,
+    InvalidArgumentError,
+    ResourceNotFoundError,
+)
 from hablator.usecase.commons.time import FixedClock
 from hablator.usecase.delivery.dispatcher import DeliveryDispatcher
 from hablator.usecase.notification.model import (
+    AttemptOutcome,
     ChannelRequest,
     Delivery,
     DeliveryOutcome,
     DeliveryStatus,
+    HistoryQuery,
     NotificationRequest,
     NotificationStatus,
+    NotificationSummary,
+    Page,
 )
 from hablator.usecase.notification.service import NotificationService
 from tests.fixtures import (
@@ -268,3 +284,101 @@ async def test_read_an_unknown_id_is_not_found() -> None:
 
     with pytest.raises(ResourceNotFoundError):
         await service.read(999)
+
+
+class _RecordingRepository(InMemoryNotificationRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.queries: list[HistoryQuery] = []
+
+    async def history(self, query: HistoryQuery) -> Page[NotificationSummary]:
+        self.queries.append(query)
+        return Page(items=(), total=0, limit=query.limit, offset=query.offset)
+
+
+def _service_with_recording_repository() -> tuple[NotificationService, _RecordingRepository]:
+    repository = _RecordingRepository()
+    registry = _registry(FakeChannelProvider())
+    service = NotificationService(
+        clock=FixedClock(_NOW),
+        transaction=InlineTransaction(),
+        repository=repository,
+        dispatcher=_FakeDispatcher(),
+        registry=registry,
+        provider_configs=InMemoryProviderConfigRepository(),
+    )
+    return service, repository
+
+
+async def test_history_passes_the_query_to_the_repository() -> None:
+    service, repository = _service_with_recording_repository()
+    query = HistoryQuery(source="valoab", limit=5, offset=10)
+
+    page = await service.history(query)
+
+    assert repository.queries == [query]
+    assert (page.total, page.limit, page.offset) == (0, 5, 10)
+
+
+def _send_request() -> NotificationRequest:
+    return NotificationRequest(
+        content=Content(subject="s", body_text="b"),
+        channels=(ChannelRequest(channel=Channel.EMAIL, recipients=(Recipient("ops@example.com"),)),),
+    )
+
+
+async def test_retry_reopens_a_failed_delivery_and_appends_the_next_attempt() -> None:
+    provider = FakeChannelProvider(result=failing_result(500))
+    service, _ = _service_with_real_dispatcher(provider)
+    outcome = await service.send(_send_request())
+    delivery_id = outcome.deliveries[0].delivery.id
+    assert delivery_id is not None
+    provider.result = ProviderResult(
+        provider="mailgun",
+        provider_status=200,
+        error_kind=None,
+        error_message=None,
+        provider_body="queued",
+    )
+
+    detail = await service.retry(delivery_id)
+
+    assert detail.delivery.id == delivery_id
+    assert detail.delivery.status is DeliveryStatus.SUCCEEDED
+    assert [attempt.attempt_number for attempt in detail.attempts] == [1, 2]
+    assert detail.attempts[-1].outcome is AttemptOutcome.SUCCEEDED
+
+
+async def test_retry_dispatches_a_pending_delivery_without_reopening_it() -> None:
+    provider = FakeChannelProvider()
+    service, repository = _service_with_real_dispatcher(provider)
+    await service.send(_send_request())
+    delivery = next(iter(repository.deliveries.values()))
+    await repository.update_delivery(replace(delivery, status=DeliveryStatus.PENDING))
+    delivery_id = delivery.id
+    assert delivery_id is not None
+
+    detail = await service.retry(delivery_id)
+
+    assert detail.delivery.status is DeliveryStatus.SUCCEEDED
+    assert provider.sent
+
+
+@pytest.mark.parametrize("status", [DeliveryStatus.SUCCEEDED, DeliveryStatus.IN_PROGRESS])
+async def test_retry_a_non_retriable_delivery_is_a_conflict(status: DeliveryStatus) -> None:
+    service, repository = _service_with_real_dispatcher(FakeChannelProvider())
+    await service.send(_send_request())
+    delivery = next(iter(repository.deliveries.values()))
+    await repository.update_delivery(replace(delivery, status=status))
+    delivery_id = delivery.id
+    assert delivery_id is not None
+
+    with pytest.raises(DeliveryNotRetriableError):
+        await service.retry(delivery_id)
+
+
+async def test_retry_an_unknown_delivery_is_not_found() -> None:
+    service, _ = _service_with_real_dispatcher(FakeChannelProvider())
+
+    with pytest.raises(ResourceNotFoundError):
+        await service.retry(999)
