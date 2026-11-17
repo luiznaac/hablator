@@ -29,9 +29,13 @@ from hablator.gateway.health.http_client_health_check import HttpClientHealthChe
 from hablator.httpapi.configuration.server import build_app, install_request_context_middleware
 from hablator.httpapi.controller.base import IController
 from hablator.httpapi.controller.health_controller import HealthController
+from hablator.persistence.channel.provider_config_repository import SqlAlchemyProviderConfigRepository
+from hablator.persistence.channel.retry_policy_repository import SqlAlchemyRetryPolicyRepository
 from hablator.persistence.configuration.database import build_engine, build_session_factory
 from hablator.persistence.configuration.transaction import SqlAlchemyTransactionTemplate
 from hablator.persistence.health.mysql_health_check import MySqlConnectionHealthCheck
+from hablator.persistence.notification.delivery_repository import SqlAlchemyDeliveryRepository
+from hablator.persistence.notification.notification_repository import SqlAlchemyNotificationRepository
 from hablator.usecase.commons.time import IClock, SystemClock
 from hablator.usecase.health.checker import IHealthChecker
 from hablator.usecase.health.telemetry import HealthTelemetry
@@ -57,6 +61,12 @@ class Container:
         self.transaction_template = SqlAlchemyTransactionTemplate(self._session_factory)
         self.http_client: httpx.AsyncClient = build_http_client()
         self.telemetry.instrument_http_client()
+
+        # --- repositories -------------------------------------------------
+        self.notification_repository = SqlAlchemyNotificationRepository(self.transaction_template)
+        self.delivery_repository = SqlAlchemyDeliveryRepository(self.transaction_template)
+        self.provider_config_repository = SqlAlchemyProviderConfigRepository(self.transaction_template)
+        self.retry_policy_repository = SqlAlchemyRetryPolicyRepository(self.transaction_template)
 
         # --- health slice ------------------------------------------------
         self.health_telemetry = HealthTelemetry(self.telemetry.meter)

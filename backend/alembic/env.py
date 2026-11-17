@@ -13,9 +13,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Populates Base.metadata as a side effect of import — there is no aggregate "models" module (see
 # persistence/configuration/base.py), so every entity module is imported explicitly here. Add a
-# new one whenever a new persistence/<feature>/entity.py is added. No entity exists yet: the hub
-# schema lands with the notification model.
+# new one whenever a new persistence/<feature>/entity.py is added.
+from hablator.persistence.channel import entity as _channel_entity  # noqa: F401
 from hablator.persistence.configuration.base import Base
+from hablator.persistence.notification import entity as _notification_entity  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
