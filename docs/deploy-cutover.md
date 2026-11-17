@@ -24,7 +24,7 @@ schema to be reachable at boot. The database is **not** in the image.
 ## Changes for `iac/homelab/stacks/hablator/`
 
 1. **Image pin** — `stacks_hablator_image` becomes `luiznaac/hablator:latest@<digest>`
-   (pin the digest of the first green `publish` run, as the other stacks do).
+   (pin the digest of the first green `Docker publish` run, as the other stacks do).
 2. **Ports** — the legacy consumers hit `host:6903/send-email`, so publish the API:
    `"${HABLATOR_PORT:-6903}:8080"`. The web UI is a second, optional publish
    (`"${HABLATOR_WEB_PORT:-6904}:8081"`); only `6903` is required for the legacy contract.

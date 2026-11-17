@@ -57,7 +57,7 @@ docker compose up --build     # app + MySQL, full stack
 docker compose up -d mysql    # just the DB (host :8142), for local `cd backend && uv run poe run`
 ```
 
-**Publishing:** after CI passes on a push to `master`, the `publish` job in `.github/workflows/ci.yml` builds and pushes `luiznaac/hablator:latest` and `:v<run-number>` (a sequential build number) to Docker Hub. Needs repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+**Publishing:** after CI passes on a push to `master`, the dedicated `.github/workflows/docker-publish.yml` (triggered on `workflow_run` completion) builds and pushes `luiznaac/hablator:latest` and `:v<run-number>` (a sequential build number) to Docker Hub. Needs repo variables `DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`.
 
 ## Checks
 
@@ -65,6 +65,6 @@ docker compose up -d mysql    # just the DB (host :8142), for local `cd backend 
 npm run check      # backend `poe check` + frontend `npm run check` + frontend build
 ```
 
-CI (`.github/workflows/ci.yml`) runs the backend (full `poe test`, integration suite included) and frontend jobs independently, then a `publish` job (master pushes only) that gates the Docker image on both.
+CI (`.github/workflows/ci.yml`) runs the backend (full `poe test`, integration suite included) and frontend jobs independently; `.github/workflows/docker-publish.yml` then builds the image only when that CI run concludes green on `master`.
 
 `package.json` at the repo root is only a script shim (no dependencies) — the real toolchains are `uv` in `backend/` and `npm` in `frontend/`.
