@@ -24,17 +24,25 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from hablator.application.settings import Settings
 from hablator.application.telemetry import Telemetry, build_telemetry
 from hablator.gateway.configuration.http_client import build_http_client
+from hablator.gateway.email.mailgun_provider import MailgunEmailProvider
 from hablator.gateway.health.app_health_gateway import AppHealthGateway
 from hablator.gateway.health.http_client_health_check import HttpClientHealthCheck
 from hablator.httpapi.configuration.server import build_app, install_request_context_middleware
 from hablator.httpapi.controller.base import IController
 from hablator.httpapi.controller.health_controller import HealthController
+from hablator.httpapi.controller.legacy_email_controller import LegacyEmailController
+from hablator.persistence.channel.repository import ProviderConfigRepository
 from hablator.persistence.configuration.database import build_engine, build_session_factory
 from hablator.persistence.configuration.transaction import SqlAlchemyTransactionTemplate
 from hablator.persistence.health.mysql_health_check import MySqlConnectionHealthCheck
+from hablator.persistence.notification.repository import NotificationRepository
+from hablator.usecase.channel.registry import ChannelRegistry
+from hablator.usecase.channel.telemetry import AttemptTelemetry
 from hablator.usecase.commons.time import IClock, SystemClock
+from hablator.usecase.delivery.dispatcher import DeliveryDispatcher
 from hablator.usecase.health.checker import IHealthChecker
 from hablator.usecase.health.telemetry import HealthTelemetry
+from hablator.usecase.notification.service import NotificationService
 
 
 class Container:
@@ -69,9 +77,39 @@ class Container:
         else:
             self.health_checkers = list(health_checkers)
 
+        # --- channel / notification slice -------------------------------
+        self.channel_registry = ChannelRegistry()
+        self.channel_registry.register(
+            MailgunEmailProvider(
+                self.http_client,
+                api_url=settings.email.api_url,
+                api_auth=settings.email.api_auth,
+                from_email=settings.email.from_email,
+                bcc_email=settings.email.bcc_email,
+            )
+        )
+        self.attempt_telemetry = AttemptTelemetry(self.telemetry.meter)
+        self.notification_repository = NotificationRepository()
+        self.provider_config_repository = ProviderConfigRepository()
+        self.delivery_dispatcher = DeliveryDispatcher(
+            clock=self.clock,
+            transaction=self.transaction_template,
+            repository=self.notification_repository,
+            provider_configs=self.provider_config_repository,
+            registry=self.channel_registry,
+            telemetry=self.attempt_telemetry,
+        )
+        self.notification_service = NotificationService(
+            clock=self.clock,
+            transaction=self.transaction_template,
+            repository=self.notification_repository,
+            dispatcher=self.delivery_dispatcher,
+        )
+
         # --- http layer ------------------------------------------------
         self.controllers: list[IController] = [
             HealthController(self.health_checkers, self.health_telemetry),
+            LegacyEmailController(self.notification_service),
         ]
 
         @asynccontextmanager

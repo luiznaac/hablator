@@ -107,7 +107,7 @@ uv run poe test             # everything
 | `telemetry.endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` in dev; **required in prod** |
 | `telemetry.console` | `TELEMETRY_CONSOLE` | `false` (dev-only console exporters) |
 
-`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.email` is the same shape for the email channel: the bare `API_URL` / `API_AUTH` / `FROM_EMAIL` / `BCC_EMAIL` names the legacy `hablator.py` already documents.
+`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.email` is the same shape for the email channel: the bare `API_URL` / `API_AUTH` / `FROM_EMAIL` / `BCC_EMAIL` names the legacy proxy documented, kept so a deploy (and the legacy `/send-email` adapter's env fallback) needs no change.
 
 ### Ports (canonical family table)
 

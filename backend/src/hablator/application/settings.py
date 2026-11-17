@@ -36,8 +36,8 @@ class GatewaysConfig(BaseModel):
 
 
 class EmailConfig(BaseModel):
-    """The typed reader of the email channel's keys — the bare env names the legacy
-    `hablator.py` already documents, so a deploy keeps working unchanged.
+    """The typed reader of the email channel's keys — the bare env names the legacy proxy
+    documented, so a deploy keeps working unchanged.
     """
 
     # The Mailgun v3 send endpoint (`https://api.mailgun.net/v3/<domain>/messages`).
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     otel_batch_schedule_delay: int = Field(default=5000, validation_alias="OTEL_BLRP_SCHEDULE_DELAY")
     otel_metric_export_interval: int = Field(default=60000, validation_alias="OTEL_METRIC_EXPORT_INTERVAL")
 
-    # The email channel reads the bare env names the legacy `hablator.py` already documents
+    # The email channel reads the bare env names the legacy proxy documented
     # (`API_URL`, `API_AUTH`, `FROM_EMAIL`, `BCC_EMAIL`), so a deploy keeps working unchanged.
     # `api_auth` is the one secret with no default: a missing value fails the boot loudly
     # instead of sending unauthenticated.
