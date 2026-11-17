@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -17,8 +17,7 @@ from opentelemetry.sdk._logs import ReadableLogRecord
 from pytest_httpserver import HTTPServer
 
 from hablator.application.container import Container
-from hablator.application.telemetry import HTTP_DURATION_BUCKETS, Telemetry, build_telemetry
-from hablator.usecase.commons.logging import configure_logging
+from hablator.application.telemetry import HTTP_DURATION_BUCKETS, Telemetry
 from tests.fixtures import (
     StubHealthChecker,
     build_test_settings,
@@ -26,17 +25,6 @@ from tests.fixtures import (
     metrics_by_name,
     new_log_records,
 )
-
-
-@pytest.fixture
-def telemetry() -> Iterator[Telemetry]:
-    instance = build_telemetry(build_test_settings())
-    configure_logging("INFO", json=True)
-    instance.install_log_bridge()
-    try:
-        yield instance
-    finally:
-        instance.shutdown()
 
 
 @pytest.fixture

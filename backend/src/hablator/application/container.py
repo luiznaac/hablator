@@ -31,6 +31,7 @@ from hablator.httpapi.configuration.server import build_app, install_request_con
 from hablator.httpapi.controller.base import IController
 from hablator.httpapi.controller.health_controller import HealthController
 from hablator.httpapi.controller.legacy_email_controller import LegacyEmailController
+from hablator.httpapi.controller.notification_controller import NotificationController
 from hablator.persistence.channel.repository import ProviderConfigRepository, RetryPolicyRepository
 from hablator.persistence.configuration.database import build_engine, build_session_factory
 from hablator.persistence.configuration.transaction import SqlAlchemyTransactionTemplate
@@ -82,10 +83,10 @@ class Container:
         self.channel_registry.register(
             MailgunEmailProvider(
                 self.http_client,
-                api_url=settings.email.api_url,
-                api_auth=settings.email.api_auth,
-                from_email=settings.email.from_email,
-                bcc_email=settings.email.bcc_email,
+                api_url=settings.mailgun.api_url,
+                api_key=settings.mailgun.api_key,
+                from_email=settings.mailgun.from_email,
+                bcc_email=settings.mailgun.bcc_email,
             )
         )
         self.attempt_telemetry = AttemptTelemetry(self.telemetry.meter)
@@ -105,12 +106,15 @@ class Container:
             transaction=self.transaction_template,
             repository=self.notification_repository,
             dispatcher=self.delivery_dispatcher,
+            registry=self.channel_registry,
+            provider_configs=self.provider_config_repository,
         )
 
         # --- http layer ------------------------------------------------
         self.controllers: list[IController] = [
             HealthController(self.health_checkers, self.health_telemetry),
             LegacyEmailController(self.notification_service),
+            NotificationController(self.notification_service, api_token=settings.auth.api_token),
         ]
 
         @asynccontextmanager

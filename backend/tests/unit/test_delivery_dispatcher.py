@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from hablator.application.telemetry import Telemetry
 from hablator.usecase.channel.model import Channel, Content, ErrorKind, ProviderConfig, Recipient
 from hablator.usecase.channel.registry import ChannelRegistry
 from hablator.usecase.commons.exceptions import DomainError
@@ -18,6 +19,7 @@ from tests.fixtures import (
     InMemoryNotificationRepository,
     InMemoryProviderConfigRepository,
     failing_result,
+    log_records,
 )
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -146,3 +148,17 @@ async def test_email_falls_back_to_the_default_provider_without_a_config_row() -
     await dispatcher.dispatch(_delivery())
 
     assert provider.sent[0].config == {}
+
+
+async def test_a_raising_provider_logs_a_stack_trace_at_error(telemetry: Telemetry) -> None:
+    provider = FakeChannelProvider(exception=RuntimeError("kaboom"))
+    dispatcher, _ = _dispatcher(provider)
+
+    await dispatcher.dispatch(_delivery())
+
+    unexpected = [
+        item.log_record for item in log_records(telemetry) if item.log_record.body == "channel.attempt.unexpected"
+    ]
+    assert len(unexpected) == 1
+    assert unexpected[0].severity_text == "ERROR"
+    assert "RuntimeError" in str(unexpected[0].attributes.get("exception.stacktrace", ""))

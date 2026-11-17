@@ -23,7 +23,7 @@ from hablator.usecase.channel.model import (
     ProviderResult,
 )
 from hablator.usecase.health.checker import HealthCheckResult
-from hablator.usecase.notification.model import Attempt, Delivery, Notification
+from hablator.usecase.notification.model import Attempt, Delivery, DeliveryDetail, Notification, NotificationDetail
 
 _T = TypeVar("_T")
 
@@ -121,6 +121,20 @@ class InMemoryNotificationRepository:
             stored_deliveries.append(stored)
         return stored_notification, stored_deliveries
 
+    async def get(self, notification_id: int) -> NotificationDetail | None:
+        notification = self.notifications.get(notification_id)
+        if notification is None:
+            return None
+        details = tuple(
+            DeliveryDetail(
+                delivery=delivery,
+                attempts=tuple(attempt for attempt in self.attempts if attempt.delivery_id == delivery.id),
+            )
+            for delivery in self.deliveries.values()
+            if delivery.notification_id == notification_id
+        )
+        return NotificationDetail(notification=notification, deliveries=details)
+
     async def update_delivery(self, delivery: Delivery) -> None:
         assert delivery.id is not None
         self.deliveries[delivery.id] = delivery
@@ -165,6 +179,9 @@ class FakeChannelProvider:
         self.exception = exception
         self.hook = hook
         self.sent: list[ChannelMessage] = []
+
+    def prepare(self, message: ChannelMessage) -> ChannelMessage:
+        return message
 
     async def send(self, message: ChannelMessage) -> ProviderResult:
         if self.hook is not None:

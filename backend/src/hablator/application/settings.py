@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import socket
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,17 +35,42 @@ class GatewaysConfig(BaseModel):
     app: AppGatewayConfig = Field(default_factory=AppGatewayConfig)
 
 
-class EmailConfig(BaseModel):
-    """The typed reader of the email channel's keys — the bare env names the legacy proxy
-    documented, so a deploy keeps working unchanged.
+class MailgunConfig(BaseModel):
+    """The typed reader of the email channel's env keys (`MAILGUN__*`).
+
+    `api_key` is the provider secret and has no default: a missing value fails the boot loudly.
+    `from`/`bcc` are the bootstrap fallbacks; a `provider_config` row wins at dispatch.
     """
 
-    # The Mailgun v3 send endpoint (`https://api.mailgun.net/v3/<domain>/messages`).
-    api_url: str
+    model_config = ConfigDict(populate_by_name=True)
+
     # The HTTP Basic password; the user half is always `api`.
-    api_auth: str
-    from_email: str
-    bcc_email: str
+    api_key: str
+    # The Mailgun v3 send endpoint (`https://api.mailgun.net/v3/<domain>/messages`).
+    api_url: str = "https://api.mailgun.net/v3/hablator.invalid/messages"
+    from_email: str = Field(default="hablator@hablator.invalid", validation_alias=AliasChoices("from", "from_email"))
+    bcc_email: str = Field(
+        default="hablator-archive@hablator.invalid", validation_alias=AliasChoices("bcc", "bcc_email")
+    )
+
+
+class AuthConfig(BaseModel):
+    """The single Bearer token the new API requires (`AUTH__API_TOKEN`, no default)."""
+
+    api_token: str
+
+
+class DatabaseSettings(BaseSettings):
+    """The DB half of `Settings`, for tools that must not require the app's secrets (Alembic)."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+    mysql: MySqlConfig = Field(default_factory=MySqlConfig)
 
 
 class TelemetryConfig(BaseModel):
@@ -79,14 +104,10 @@ class Settings(BaseSettings):
     otel_batch_schedule_delay: int = Field(default=5000, validation_alias="OTEL_BLRP_SCHEDULE_DELAY")
     otel_metric_export_interval: int = Field(default=60000, validation_alias="OTEL_METRIC_EXPORT_INTERVAL")
 
-    # The email channel reads the bare env names the legacy proxy documented
-    # (`API_URL`, `API_AUTH`, `FROM_EMAIL`, `BCC_EMAIL`), so a deploy keeps working unchanged.
-    # `api_auth` is the one secret with no default: a missing value fails the boot loudly
-    # instead of sending unauthenticated.
-    api_url: str = "https://api.mailgun.net/v3/hablator.invalid/messages"
-    api_auth: str
-    from_email: str = "hablator@hablator.invalid"
-    bcc_email: str = "hablator-archive@hablator.invalid"
+    # Both secret groups have no default: a missing key or token fails the boot loudly instead
+    # of sending unauthenticated or serving the hub open to the LAN.
+    mailgun: MailgunConfig
+    auth: AuthConfig
 
     mysql: MySqlConfig = Field(default_factory=MySqlConfig)
     gateways: GatewaysConfig = Field(default_factory=GatewaysConfig)
@@ -102,15 +123,6 @@ class Settings(BaseSettings):
     @property
     def app_host(self) -> str:
         return self.gateways.app.host or f"http://localhost:{self.http_port}"
-
-    @property
-    def email(self) -> EmailConfig:
-        return EmailConfig(
-            api_url=self.api_url,
-            api_auth=self.api_auth,
-            from_email=self.from_email,
-            bcc_email=self.bcc_email,
-        )
 
     @property
     def telemetry(self) -> TelemetryConfig:

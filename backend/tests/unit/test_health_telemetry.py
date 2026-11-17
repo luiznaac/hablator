@@ -2,29 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-import pytest
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
-from hablator.application.telemetry import Telemetry, build_telemetry
-from hablator.usecase.commons.logging import configure_logging
+from hablator.application.telemetry import Telemetry
 from hablator.usecase.health.checker import HealthCheckResult
 from hablator.usecase.health.telemetry import HealthTelemetry
-from tests.fixtures import build_test_settings, log_records, metrics_by_name
-
-
-@pytest.fixture
-def telemetry() -> Iterator[Telemetry]:
-    instance = build_telemetry(build_test_settings())
-    configure_logging("INFO", json=True)
-    instance.install_log_bridge()
-    try:
-        yield instance
-    finally:
-        instance.shutdown()
+from tests.fixtures import log_records, metrics_by_name
 
 
 def _result(component: str, healthy: bool) -> HealthCheckResult:
