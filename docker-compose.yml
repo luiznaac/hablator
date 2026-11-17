@@ -61,8 +61,9 @@ services:
       - MYSQL__USER=root
       - MYSQL__PASSWORD=
       - MYSQL__DATABASE=hablator
-      # Email channel — the bare names the legacy `hablator.py` reads. API_AUTH has no
-      # default in code, so an unset value fails the boot loudly; export it to run this stack.
+      # Email channel — the bare names the legacy proxy documented (and the `/send-email`
+      # adapter's env fallback reads). API_AUTH has no default in code, so an unset value
+      # fails the boot loudly; export it to run this stack.
       - API_URL
       - API_AUTH
       - FROM_EMAIL

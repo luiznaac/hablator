@@ -9,7 +9,7 @@ Notification hub for the homelab: it takes send requests from other projects and
 
 The domain glossary is [`CONTEXT.md`](CONTEXT.md). The frontend's `src/api/types.ts` mirrors the backend's `httpapi/schema.py`; keep them in sync in the same change — that's the reason these two live in one repo.
 
-`hablator.py` at the root is the legacy single-file email proxy. It keeps serving `POST /send-email` unchanged until the hub's compatibility adapter lands (the map's [scaffold-adoption PR 2](https://github.com/luiznaac/hablator/issues/21)); it is not part of the container image.
+The legacy `POST /send-email` contract is served by the backend's compatibility adapter over the hub's email channel. Golden fixtures pin its responses byte-for-byte, so existing consumers (valoab via chameidor) need no change; the old single-file `hablator.py` proxy is gone.
 
 ## Dev
 

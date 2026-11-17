@@ -5,7 +5,7 @@ Two lanes, one repo:
 - **`backend/`** — the FastAPI hexagonal service (the notification hub's API). All backend commands run from `backend/` (`cd backend && uv run poe <task>`). Its architecture, conventions and the rules for evolving it are in [backend/AGENTS.md](backend/AGENTS.md) — read that before touching `backend/`.
 - **`frontend/`** — the React/Vite SPA (the debug UI). Commands run from `frontend/` (`npm --prefix frontend run <script>`). Details in [frontend/AGENTS.md](frontend/AGENTS.md).
 
-`hablator.py` at the root is the legacy single-file email proxy. It keeps serving `POST /send-email` unchanged until the hub's compatibility adapter lands; it is not part of the container image and no new behavior goes there.
+The legacy `POST /send-email` contract is served by the backend's compatibility adapter (`backend/src/hablator/httpapi/controller/legacy_email_controller.py`) over the hub's email channel; the old single-file `hablator.py` proxy is gone. Golden fixtures in `backend/tests/integration/test_legacy_send_email.py` pin its responses byte-for-byte.
 
 ## The one cross-cutting rule
 

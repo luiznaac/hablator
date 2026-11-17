@@ -1,8 +1,8 @@
 """Applies pending Alembic migrations to the configured database.
 
-Hablator's schema history starts at an empty `0001_baseline`, and the service that predates it
-(`hablator.py`) kept no database at all — so there is no legacy schema to baseline: every
-database this script meets is either empty or already versioned. `upgrade head` covers both.
+Hablator's schema history starts at an empty `0001_baseline`, and the single-file proxy that
+predated it kept no database at all — so there is no legacy schema to baseline: every database
+this script meets is either empty or already versioned. `upgrade head` covers both.
 
 Run via `uv run poe migrate` locally, or from `deploy/entrypoint.sh` in the container — never
 from the app itself; a failed migration must abort the container instead of serving traffic

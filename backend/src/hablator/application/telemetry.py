@@ -74,6 +74,9 @@ HTTP_DURATION_BUCKETS: tuple[float, ...] = (
     10,
 )
 DB_OPERATION_BUCKETS: tuple[float, ...] = (0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10)
+# One provider call is bounded by the shared client's 5 s connect / 10 s read timeout.
+NOTIFICATION_ATTEMPT_BUCKETS: tuple[float, ...] = (0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+_NOTIFICATION_ATTEMPT_ATTRIBUTES = {"channel", "provider", "outcome", "retriable"}
 
 RUNTIME_METRICS: dict[str, list[str] | None] = {
     "process.cpu.time": ["user", "system"],
@@ -151,6 +154,15 @@ def _views() -> Sequence[View]:
         View(
             instrument_name="db.client.operation.duration",
             aggregation=ExplicitBucketHistogramAggregation(boundaries=DB_OPERATION_BUCKETS),
+        ),
+        View(
+            instrument_name="notification.attempts",
+            attribute_keys=_NOTIFICATION_ATTEMPT_ATTRIBUTES,
+        ),
+        View(
+            instrument_name="notification.attempt.duration",
+            attribute_keys=_NOTIFICATION_ATTEMPT_ATTRIBUTES,
+            aggregation=ExplicitBucketHistogramAggregation(boundaries=NOTIFICATION_ATTEMPT_BUCKETS),
         ),
         View(instrument_name=_LEGACY_DB_CONNECTIONS_USAGE, aggregation=DropAggregation()),
     ]

@@ -13,6 +13,7 @@ from contextlib import AbstractAsyncContextManager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers, MutableHeaders
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from hablator.httpapi.controller.base import IController
@@ -162,6 +163,11 @@ def _install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def _domain(request: Request, exc: DomainError) -> JSONResponse:
         return _problem(request, 422, "domain_error", str(exc))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        code = _STATUS_ERROR_TYPES.get(exc.status_code, f"http_{exc.status_code}")
+        return _problem(request, exc.status_code, code, str(exc.detail))
 
 
 def _problem(request: Request, status: int, code: str, detail: str) -> JSONResponse:

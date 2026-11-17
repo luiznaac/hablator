@@ -224,6 +224,15 @@ Pool series exist only where a pool exists. This lane has one (SQLAlchemy's asyn
 
 Name `<domain>.<event>` — lowercase, dot-separated, past tense (`orders.created`, `contracts.synced`); dimensions are attributes, never name interpolation. Counter, unit `{event}` → Prometheus `<domain>_<event>_total`. Counters first; a histogram needs an explicit unit, explicit buckets and a documented rationale. Attributes: bounded dimensions only, ≤ 5 per metric, listed in this file's catalog table when added. One metric per business event — never per function call, never derived from logs. Declared through the OTel `Meter` API at the usecase layer (mirroring SLF4J) with a single custom meter scope: scope name = `service.name`, scope version = app version. The composition root injects the meter, so tests get the API's no-op meter.
 
+Hub attempt metrics (names fixed by the hub spec, [issue #24](https://github.com/luiznaac/hablator/issues/24); the past-tense form is not used here because the spec of record names them):
+
+| OTel name | Type | Unit | Buckets | Attributes |
+|---|---|---|---|---|
+| `notification.attempts` | Counter | `{attempt}` | — | `channel`, `provider`, `outcome`, `retriable` |
+| `notification.attempt.duration` | Histogram | `s` | `[0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]` | `channel`, `provider`, `outcome`, `retriable` |
+
+Rationale for the histogram: one attempt is one provider HTTP call bounded by the shared client's 5 s connect / 10 s read timeout, so the buckets cover sub-second provider latency through the read timeout. All four attributes are bounded (`channel` 4 values, `provider` a registered name, `outcome` 2, `retriable` 2) → at most 16 series per metric. The attempt failure is the provider-level record the dispatcher alone can produce; the HTTP 502 the boundary logs is the response record, not a duplicate of it at the same seam.
+
 ### Cardinality rules (hard)
 
 - Never a metric attribute: `request.id`, `job.id`, user/session/order ids, raw URL paths, query strings, full URLs, user-agent strings, client IPs, emails, free-text error messages, timestamps. `request.id` is a **log** attribute only.
