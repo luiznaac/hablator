@@ -19,6 +19,8 @@ from hablator.usecase.notification.model import (
     NotificationDetail,
     NotificationRequest,
     NotificationStatus,
+    NotificationSummary,
+    Page,
 )
 
 MAX_PART_BYTES = 256 * 1024
@@ -209,6 +211,44 @@ class NotificationDetailResponse(BaseModel):
             deliveries=[
                 DeliveryResponse.from_domain(delivery.delivery, delivery.attempts) for delivery in detail.deliveries
             ],
+        )
+
+
+class NotificationSummaryResponse(BaseModel):
+    """One history row: identity, derived status and the channels the notification used."""
+
+    id: int
+    source: str | None
+    subject: str | None
+    status: NotificationStatus
+    created_at: UtcDateTime
+    channels: list[Channel]
+
+    @classmethod
+    def from_domain(cls, summary: NotificationSummary) -> Self:
+        return cls(
+            id=summary.id,
+            source=summary.source,
+            subject=summary.subject,
+            status=summary.status,
+            created_at=summary.created_at,
+            channels=list(summary.channels),
+        )
+
+
+class NotificationPageResponse(BaseModel):
+    items: list[NotificationSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+    @classmethod
+    def from_domain(cls, page: Page[NotificationSummary]) -> Self:
+        return cls(
+            items=[NotificationSummaryResponse.from_domain(item) for item in page.items],
+            total=page.total,
+            limit=page.limit,
+            offset=page.offset,
         )
 
 

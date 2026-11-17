@@ -1,8 +1,8 @@
 # Hablator HTTP API
 
-The consumer document for the hub's notification API. It covers the two endpoints shipped in this
-slice — `POST /notifications` and `GET /notifications/{id}` — and the error model every endpoint
-shares.
+The consumer document for the hub's notification API. It covers `POST /notifications`,
+`GET /notifications`, `GET /notifications/{id}` and `POST /deliveries/{id}/retry`, plus the error
+model every endpoint shares.
 
 ## Base URL and authentication
 
@@ -105,6 +105,54 @@ sends text-only or HTML-only. The new API path never derives a plain part from H
   HTTP 420/429 or any 5xx; `false` otherwise (including a 401/403 misconfiguration and an
   unexpected adapter error).
 
+## `GET /notifications`
+
+The notification history, newest first (`created_at DESC, id DESC`), with offset pagination and
+filters. Every filter is optional and combines with the others.
+
+| Query | Rules |
+|---|---|
+| `source` | Exact match on the notification's `source`. |
+| `channel` | `email`, `push`, `sms` or `voice`. Matches a notification with at least one delivery on that channel (a delivery-level `EXISTS`). |
+| `status` | The **derived** notification status: `pending`, `succeeded` or `failed`. |
+| `created_after` | Inclusive lower bound on `created_at`, RFC 3339. |
+| `created_before` | Exclusive upper bound on `created_at`, RFC 3339. |
+| `limit` | Page size, 1–100, default 20. |
+| `offset` | Rows to skip, `>= 0`, default 0. |
+
+A bound violation or an unknown `channel`/`status` is `422 validation_error` with the offending
+field in `errors[]`.
+
+### Response — `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "source": "valoab",
+      "subject": "Backup finished",
+      "status": "succeeded",
+      "created_at": "2026-11-16T22:41:03.123456Z",
+      "channels": ["email", "push"]
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+- `total` is the count **after filtering**, so a pager can render page numbers.
+- `subject` is the notification's base subject; each delivery may carry an override.
+- `channels` lists the channels the notification was sent through, in delivery order.
+- An empty result is `{"items": [], "total": 0, "limit": <limit>, "offset": <offset>}`.
+
+```bash
+curl -sS -H "Authorization: Bearer $AUTH__API_TOKEN" \
+  "http://localhost:8140/notifications?status=failed&channel=push&limit=50"
+```
+
 ## `GET /notifications/{id}`
 
 Returns the same representation. An unknown id is `404 resource_not_found`.
@@ -112,6 +160,46 @@ Returns the same representation. An unknown id is `404 resource_not_found`.
 ```bash
 curl -sS -H "Authorization: Bearer $AUTH__API_TOKEN" \
   http://localhost:8140/notifications/42
+```
+
+## `POST /deliveries/{id}/retry`
+
+Retries one delivery synchronously against its provider and returns the delivery representation
+after the attempt.
+
+- Allowed on a `failed` or `pending` delivery. A failed delivery reopens as pending, is attempted
+  again, and its new Attempt carries the next `attempt_number` (append-only history).
+- `409 conflict` when the delivery is `in_progress` or already `succeeded` — the hub refuses to
+  double-send.
+- `404 resource_not_found` for an unknown delivery id.
+- There is **no idempotency key**: a double-click can double-send. The UI disables the button in
+  flight; an API consumer must do the same.
+
+```json
+{
+  "id": 77,
+  "channel": "email",
+  "status": "succeeded",
+  "recipients": ["ops@example.com"],
+  "content": { "subject": "Backup finished", "body": "plain text", "body_html": null },
+  "options": {},
+  "next_attempt_at": null,
+  "created_at": "2026-11-16T22:41:03.123456Z",
+  "updated_at": "2026-11-16T22:43:10.000000Z",
+  "attempts": [
+    { "attempt_number": 1, "outcome": "failed", "provider": "mailgun", "provider_status": 503, "...": "..." },
+    { "attempt_number": 2, "outcome": "succeeded", "provider": "mailgun", "provider_status": 200, "...": "..." }
+  ]
+}
+```
+
+`attempts` is the full append-only history, oldest first; the retry adds exactly one entry. A
+retry does not touch the notification's other deliveries, and the notification's derived status
+follows from all of them.
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer $AUTH__API_TOKEN" \
+  http://localhost:8140/deliveries/77/retry
 ```
 
 ## Error model
@@ -133,7 +221,8 @@ FastAPI's default validation body never leaks.
 |---|---|---|
 | 400 | `invalid_argument` | A hand-checked request rule (a duplicate channel). |
 | 401 | `unauthorized` | Missing or wrong Bearer; carries `WWW-Authenticate: Bearer`. |
-| 404 | `resource_not_found` | Unknown notification id or unknown route. |
+| 404 | `resource_not_found` | Unknown notification/delivery id or unknown route. |
+| 409 | `conflict` | A retry of an `in_progress` or `succeeded` delivery. |
 | 413 | `payload_too_large` | The request body exceeds 1 MiB. |
 | 415 | `unsupported_media_type` | The request body is not JSON. |
 | 422 | `validation_error` | Body/query shape and the generic caps; `errors[]` carries field paths. |
@@ -142,8 +231,8 @@ FastAPI's default validation body never leaks.
 
 ## Not in this slice
 
-History (`GET /notifications`), manual retry (`POST /deliveries/{id}/retry`) and channel
-configuration (`GET`/`PUT`/`DELETE /channels`) are decided in the spec and land in later slices.
+Channel configuration (`GET`/`PUT`/`DELETE /channels`) is decided in the spec and lands in a later
+slice.
 
 The legacy `POST /send-email` request/response contract is preserved and pinned by its own golden
 fixtures. The shared recipients cap (1–50) applies there too; a request it rejects keeps the

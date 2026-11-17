@@ -16,11 +16,13 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from pytest_httpserver import HTTPServer
+from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.mysql import MySqlContainer
 
 from hablator.application.container import Container
 from hablator.application.settings import MySqlConfig, Settings
 from tests.docker_probe import DockerUnavailableError, require_docker
+from tests.fixtures import clear_hub_tables
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -114,3 +116,26 @@ async def client(container: Container) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=container.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
         yield http_client
+
+
+@pytest.fixture
+async def api_container(mailgun_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
+    """The app with its Mailgun adapter pointed at the stub server, over an empty hub schema."""
+    instance = Container(mailgun_settings)
+    try:
+        await clear_hub_tables(instance.engine)
+        yield instance
+    finally:
+        await instance.aclose()
+
+
+@pytest.fixture
+async def api_client(api_container: Container) -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=api_container.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
+        yield http_client
+
+
+@pytest.fixture
+def engine(api_container: Container) -> AsyncEngine:
+    return api_container.engine

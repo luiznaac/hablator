@@ -21,11 +21,16 @@ from hablator.usecase.configuration.transaction import ITransactionTemplate
 from hablator.usecase.notification.model import (
     ChannelRequest,
     Delivery,
+    DeliveryDetail,
     DeliveryStatus,
+    HistoryQuery,
     Notification,
     NotificationDetail,
     NotificationOutcome,
     NotificationRequest,
+    NotificationSummary,
+    Page,
+    reopen_for_retry,
 )
 from hablator.usecase.notification.ports import IDeliveryDispatcher, INotificationRepository
 
@@ -71,6 +76,27 @@ class NotificationService:
         detail = await self._transaction.execute(lambda: self._repository.get(notification_id))
         if detail is None:
             raise ResourceNotFoundError("notification", str(notification_id))
+        return detail
+
+    async def history(self, query: HistoryQuery) -> Page[NotificationSummary]:
+        """One page of notification history, filtered and ordered newest first."""
+        return await self._transaction.execute(lambda: self._repository.history(query))
+
+    async def retry(self, delivery_id: int) -> DeliveryDetail:
+        """Retry a delivery synchronously and return it with its appended attempts.
+
+        Raises:
+            ResourceNotFoundError: when no delivery has that id.
+            DeliveryNotRetriableError: when the delivery is in progress or already succeeded.
+        """
+        detail = await self._delivery_detail(delivery_id)
+        await self._dispatcher.dispatch(reopen_for_retry(detail.delivery, now=self._clock.now()))
+        return await self._delivery_detail(delivery_id)
+
+    async def _delivery_detail(self, delivery_id: int) -> DeliveryDetail:
+        detail = await self._transaction.execute(lambda: self._repository.get_delivery(delivery_id))
+        if detail is None:
+            raise ResourceNotFoundError("delivery", str(delivery_id))
         return detail
 
     async def _create(

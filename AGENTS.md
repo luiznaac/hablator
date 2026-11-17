@@ -37,6 +37,20 @@ No real secret value is committed or defaulted in code: `MAILGUN__API_KEY` (the 
 
 One image (repo-root `Dockerfile`, multi-stage) ships backend + frontend together: `supervisord` runs `uvicorn` (API, `API_PORT`/8080) and `nginx` (`deploy/nginx.conf.template` — serves the built SPA on `WEB_PORT`/8081 and reverse-proxies `/api` → uvicorn). Those container-internal ports are fixed, and the image pins `MYSQL__PORT=3306` for its external database. No DB in the image. `docker-compose.yml` at the root adds MySQL for full-stack / DB-only local runs, publishing the host side on hablator's assigned block — `api` 8140, `web` 8141, `mysql` 8142 — recorded in [`.salgadinhos/ports.json`](.salgadinhos/ports.json) and listed in [README.md](README.md#ports); the Vite dev server uses `frontend-dev` 8143. The schema comes from `backend/alembic/versions/*.py`, applied by `python scripts/migrate.py` from `deploy/entrypoint.sh` before the app starts — see [backend/AGENTS.md](backend/AGENTS.md) §Database migrations. The `publish` job in `.github/workflows/ci.yml` (`needs: [backend, frontend]`, push-to-master only) pushes `luiznaac/hablator-python:latest` + `:v<run-number>` — only after a green CI run.
 
+## Acceptance surface
+
+**Surface kinds**: `HTTP` (the backend API) and `Browser` (the debug SPA).
+
+**Run story**: from the repo root, `docker compose up -d mysql` brings MySQL 9.4.0 up on `mysql`
+(host `8142`); a local Mailgun stub stands in for the provider on `8199`; `uv run poe migrate` then
+`uv run poe run` in `backend/` apply the schema and serve the API on `api`
+(`http://localhost:8140`) pointed at the stub; `npm run dev` in `frontend/` serves the SPA on
+`frontend-dev` (`http://localhost:8143`), whose `/api` proxy forwards to the API. Acceptance boots
+that stack, drives the API over HTTP and the SPA through the browser surface, then tears it down.
+
+**Runbook**: [docs/acceptance/runbook.md](docs/acceptance/runbook.md) — the bootstrap-only
+per-service `start`/`ready`/`stop` commands, in start order.
+
 ## Scaffold lineage
 
 Each lane is a project instantiated from `environments` by `tools/new-project.mjs` and grafted here; the lineage pins live in `.salgadinhos/backend.yml` (`python` scaffold) and `.salgadinhos/frontend.yml` (`react` scaffold), advanced only by `template-propagate`. Don't hand-copy or hand-rename scaffold files.
