@@ -1,0 +1,11 @@
+# Five tables, typed content columns, and a derived notification status
+
+**Status:** accepted
+
+The hub stores Notifications, Deliveries and Attempts in three tables, plus two one-row-per-channel configuration tables (`provider_config`, `retry_policy`). Content is typed columns (`subject VARCHAR(998)`, `body_text MEDIUMTEXT NOT NULL`, `body_html MEDIUMTEXT NULL`) on both the Notification (base content) and the Delivery (the resolved copy or per-channel override), never a JSON blob. Recipients and channel options are JSON, because nothing queries by them and each adapter validates its own shape. Statuses and channels are readable `VARCHAR(16)` constrained by `CHECK`. **`notification.status` is not a column**: it is derived from the deliveries on read (`succeeded` when all succeeded, `failed` when all terminal and one failed, otherwise `pending`).
+
+The derived status is the surprising part. A persisted status would need a write on every delivery transition, a reconciliation job for crashes, and would be a second source of truth that can drift from the attempts. The accepted cost is that filtering the notification list by status is an in-app aggregate rather than an index scan, while channel filtering stays a delivery-level `EXISTS` on `(channel, status, created_at)`. At single-user volume that is the right trade, and a status column is an additive migration if history volume ever demands it.
+
+**Consequences:** ids are `BIGINT AUTO_INCREMENT` (single-user behind a token; short URLs; a `public_id` is additive). Timestamps are naive-UTC `DATETIME(6)` written by the app clock, so tests can fake time and the database never decides it. Attempts are append-only — the repository port exposes no update. Retention keeps everything: no TTL or purge job in v1; the homelab's restic MySQL dump covers the database. The `retry_policy` table exists but is unused in v1 (see ADR 0006).
+
+**Considered options:** one `notification.status` column (rejected: drift and write amplification); a `content` JSON column (rejected: caps, nullability and query shape become invisible to the database); an `ENUM` for status (rejected: every new state is a table rebuild); a `recipient` child table (rejected: no query needs it).

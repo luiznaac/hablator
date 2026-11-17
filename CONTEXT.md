@@ -15,7 +15,7 @@ The intent to deliver one Notification through one channel, with recipients, res
 _Avoid_: send, job, task.
 
 **Attempt**:
-One execution of a Delivery against a provider, recorded append-only with a sequential number, result, error and retriability classification. A Delivery may have several.
+One execution of a Delivery against a provider, recorded append-only with a sequential number, result, error and retriability classification. A Delivery may have several. A succeeded Attempt means the provider accepted or queued the message, not that it reached the inbox.
 _Avoid_: try.
 
 **Content**:
