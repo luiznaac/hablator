@@ -14,6 +14,7 @@ from hablator.usecase.channel.model import Channel, ChannelMessage, ErrorKind, P
 from hablator.usecase.channel.ports import IChannelProvider, IProviderConfigRepository
 from hablator.usecase.channel.registry import ChannelRegistry
 from hablator.usecase.channel.telemetry import AttemptTelemetry
+from hablator.usecase.commons.exceptions import require_id
 from hablator.usecase.commons.logging import get_logger
 from hablator.usecase.commons.time import IClock
 from hablator.usecase.configuration.transaction import ITransactionTemplate
@@ -57,14 +58,15 @@ class DeliveryDispatcher:
         result = await self._attempt(provider, provider.name, delivery, provider_config)
 
         finished_at = self._clock.now()
-        attempt = self._record_attempt(delivery, result, in_progress.updated_at, finished_at)
         succeeded = result.is_success
         final = transition(
             in_progress,
             DeliveryStatus.SUCCEEDED if succeeded else DeliveryStatus.FAILED,
             now=finished_at,
         )
-        await self._transaction.execute(lambda: self._persist_attempt(attempt, final))
+        attempt = await self._transaction.execute(
+            lambda: self._persist_attempt(delivery, result, in_progress.updated_at, finished_at, final)
+        )
 
         if self._telemetry is not None:
             self._telemetry.record(
@@ -122,11 +124,12 @@ class DeliveryDispatcher:
         result: ProviderResult,
         started_at: datetime,
         finished_at: datetime,
+        attempt_number: int,
     ) -> Attempt:
         return Attempt(
             id=None,
             delivery_id=delivery.id,
-            attempt_number=1,
+            attempt_number=attempt_number,
             outcome=AttemptOutcome.SUCCEEDED if result.is_success else AttemptOutcome.FAILED,
             provider=result.provider,
             provider_status=result.provider_status,
@@ -137,6 +140,16 @@ class DeliveryDispatcher:
             finished_at=finished_at,
         )
 
-    async def _persist_attempt(self, attempt: Attempt, delivery: Delivery) -> None:
-        await self._repository.add_attempt(attempt)
-        await self._repository.update_delivery(delivery)
+    async def _persist_attempt(
+        self,
+        delivery: Delivery,
+        result: ProviderResult,
+        started_at: datetime,
+        finished_at: datetime,
+        final: Delivery,
+    ) -> Attempt:
+        attempt_number = await self._repository.next_attempt_number(require_id(delivery.id, "delivery"))
+        attempt = self._record_attempt(delivery, result, started_at, finished_at, attempt_number)
+        persisted = await self._repository.add_attempt(attempt)
+        await self._repository.update_delivery(final)
+        return persisted

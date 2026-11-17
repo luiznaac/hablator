@@ -21,15 +21,17 @@ delivery dispatcher, the health slice and the cross-cutting helpers. Imports no 
 **Seam(s)**:
 - **`NotificationService`** (`notification/service.py`) — `send(request)` validates every channel
   rule inside the create transaction (duplicate channel, no registered provider, the adapter's
-  own `resolve`), persists the notification + one pending delivery per channel, then fans out;
-  `read(id)` returns the detail or raises `ResourceNotFoundError`. Depends on
-  `INotificationRepository`, `IDeliveryDispatcher`, `ChannelRegistry` and
+  own `prepare`), persists the notification + one pending delivery per channel, then fans out;
+  `read(id)` returns the detail or raises `ResourceNotFoundError`; `history(query)` returns one
+  filtered page; `retry(delivery_id)` reopens a `failed`/`pending` delivery (or refuses an
+  `in_progress`/`succeeded` one with `DeliveryNotRetriableError`) and dispatches it synchronously.
+  Depends on `INotificationRepository`, `IDeliveryDispatcher`, `ChannelRegistry` and
   `IProviderConfigRepository`.
 - **`DeliveryDispatcher`** (`delivery/dispatcher.py`) — one synchronous attempt per delivery. The
   provider call runs outside any transaction; each delivery gets its own transaction for the
   `in_progress`/final transitions and its Attempt. A raising provider becomes a non-retriable
   `unexpected` attempt (logged at ERROR). Owns attempt telemetry.
-- **`IChannelProvider`** (`channel/ports.py`) — `resolve(message)` is the adapter's own validation
+- **`IChannelProvider`** (`channel/ports.py`) — `prepare(message)` is the adapter's own validation
   seam (fills channel defaults, rejects a request the channel cannot carry) and
   `send(message) -> ProviderResult` normalizes the provider response. Adapters never decide
   retriability.
@@ -56,8 +58,9 @@ base and the naive-UTC conversion.
 **Seam(s)**:
 - **`NotificationRepository`** (`notification/repository.py`) — `INotificationRepository` +
   `IDeliveryRepository`: create (notification + pending deliveries), get (with deliveries and
-  attempts), update_delivery, add_attempt (append-only), history (source/channel `EXISTS`/derived
-  status/date filters, offset page + total).
+  attempts), get_delivery (one delivery + attempts), update_delivery, next_attempt_number (the
+  append-only numbering the dispatcher uses), add_attempt (append-only), history
+  (source/channel `EXISTS`/derived status/date filters, offset page + total).
 - **`ProviderConfigRepository` / `RetryPolicyRepository`** (`channel/repository.py`) — one row per
   channel; retry policy is modeled now though v1 does not execute retries.
 - **Transaction seam** — `SqlAlchemyTransactionTemplate` implements `ITransactionTemplate`;
@@ -89,8 +92,9 @@ domain-exception handlers.
 - **Route seam** — `IController.router()` returns an `APIRouter`; `server.build_app` mounts every
   controller the composition root passes in.
 - **`NotificationController`** (`controller/notification_controller.py`) — `POST /notifications`
-  (Bearer + JSON/size guards, `201` + `Location` + the detail DTO) and
-  `GET /notifications/{id}`; both read the notification back so they share one representation.
+  (Bearer + JSON/size guards, `201` + `Location` + the detail DTO), `GET /notifications` (query
+  filters + offset page), `GET /notifications/{id}` (both reads share one representation) and
+  `POST /deliveries/{id}/retry` (the delivery DTO after a synchronous attempt).
 - **Auth seam** — `configuration/auth.py`'s `bearer_auth` dependency enforces
   `AUTH__API_TOKEN` with a constant-time compare; the router carries it, so `/send-email`,
   `/health*`, `/docs` and `/openapi.json` stay open.
@@ -99,8 +103,9 @@ domain-exception handlers.
 - **DTO seam** — Pydantic models in `schema.py` are the edge shape; a DTO change updates
   `frontend/src/api/types.ts` in the same commit. `UtcDateTime` serializes RFC 3339 `Z`.
 - **Error seam** — `server._install_exception_handlers` maps domain exceptions and
-  `RequestValidationError` to the `{code,detail,errors?}` envelope with field paths; a new domain
-  exception is one handler branch there.
+  `RequestValidationError` to the `{code,detail,errors?}` envelope with body/query field paths;
+  `DeliveryNotRetriableError` is the `409 conflict` branch, and a new domain exception is one
+  handler branch there.
 - **Legacy seam** — `legacy_email_controller.py` maps `/send-email` onto `NotificationService`
   and keeps the byte-for-byte contract (`legacy_text.py` derives its plain part).
 
@@ -124,9 +129,9 @@ the FastAPI app and the settings.
 MySQL and a stub Mailgun.
 **Files**: `tests/conftest.py` (the `no_network` autouse guard); `tests/fixtures.py`;
 `tests/unit/{test_notification_domain,test_channel_domain,test_notification_service,test_delivery_dispatcher,test_mailgun_provider,test_attempt_telemetry,test_settings,test_architecture,...}.py`;
-`tests/integration/{conftest,test_notifications_api,test_notification_repository,test_notification_history,test_dispatch_transaction,test_legacy_send_email,test_migrations,...}.py`
+`tests/integration/{conftest,test_notifications_api,test_notification_history_api,test_delivery_retry_api,test_notification_repository,test_notification_history,test_dispatch_transaction,test_legacy_send_email,test_migrations,...}.py`
 **Seam(s)**: the HTTP boundary is the top seam (`test_notifications_api.py`,
-`test_legacy_send_email.py`); repository ports are pinned against real MySQL; adapters run against
+`test_notification_history_api.py`, `test_delivery_retry_api.py`, `test_legacy_send_email.py`); repository ports are pinned against real MySQL; adapters run against
 `pytest-httpserver`; services run with in-memory doubles. `no_network` rejects any non-loopback
 connection, so no test can reach a real provider. `uv run poe check` is the Docker-free fast gate;
 `uv run poe test` runs both lanes.

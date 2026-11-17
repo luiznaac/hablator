@@ -91,6 +91,24 @@ class NotificationRepository:
             ),
         )
 
+    async def get_delivery(self, delivery_id: int) -> DeliveryDetail | None:
+        session = current_session()
+        entity = await session.get(DeliveryEntity, delivery_id)
+        if entity is None:
+            return None
+        attempts = await _attempts_for(session, [delivery_id])
+        return DeliveryDetail(
+            delivery=_delivery_from_entity(entity),
+            attempts=tuple(_attempt_from_entity(attempt) for attempt in attempts),
+        )
+
+    async def next_attempt_number(self, delivery_id: int) -> int:
+        session = current_session()
+        statement = sqlalchemy.select(
+            sqlalchemy.func.coalesce(sqlalchemy.func.max(AttemptEntity.attempt_number), 0) + 1
+        ).where(AttemptEntity.delivery_id == delivery_id)
+        return int(await session.scalar(statement))
+
     async def update_delivery(self, delivery: Delivery) -> None:
         session = current_session()
         entity = await session.get(DeliveryEntity, delivery.id)

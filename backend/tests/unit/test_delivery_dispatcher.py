@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -70,6 +71,17 @@ async def test_a_successful_attempt_marks_the_delivery_succeeded() -> None:
     assert outcome.attempts[0].outcome is AttemptOutcome.SUCCEEDED
     assert outcome.attempts[0].retriable is False
     assert len(repository.attempts) == 1
+
+
+async def test_a_second_attempt_on_the_same_delivery_is_numbered_two() -> None:
+    dispatcher, repository = _dispatcher(FakeChannelProvider(result=failing_result(500)))
+
+    first = await dispatcher.dispatch(_delivery())
+    second = await dispatcher.dispatch(replace(first.delivery, status=DeliveryStatus.PENDING))
+
+    assert first.attempts[0].attempt_number == 1
+    assert second.attempts[0].attempt_number == 2
+    assert [attempt.attempt_number for attempt in repository.attempts] == [1, 2]
 
 
 async def test_a_retriable_failure_marks_the_delivery_failed_and_the_attempt_retriable() -> None:
