@@ -1,5 +1,6 @@
 # Rendered by deploy/entrypoint.sh (envsubst) into /etc/nginx/conf.d/hablator.conf.
-# Only ${WEB_PORT} and ${API_PORT} are substituted; nginx's own $variables are left alone.
+# Only ${WEB_PORT}, ${API_PORT} and ${AUTH__API_TOKEN} are substituted; nginx's own $variables are
+# left alone.
 
 server {
     listen      ${WEB_PORT};
@@ -16,10 +17,12 @@ server {
         try_files  $uri =404;
     }
 
-    # API — strip the /api prefix and forward to uvicorn.
+    # API — strip the /api prefix and forward to uvicorn. The SPA never holds the token, so this
+    # proxy attaches the single Bearer token to every API request.
     location /api/ {
         proxy_pass         http://127.0.0.1:${API_PORT}/;
         proxy_http_version 1.1;
+        proxy_set_header   Authorization     "Bearer ${AUTH__API_TOKEN}";
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
