@@ -6,18 +6,14 @@ stack are exercised. The error cases pin the scaffold envelope and the field pat
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
 from pytest_httpserver import HTTPServer
 from sqlalchemy import text
-from testcontainers.mysql import MySqlContainer
 
 from hablator.application.container import Container
-from hablator.application.settings import Settings
-from tests.fixtures import clear_hub_tables
 
 _TOKEN = "dev-hablator-api-token"
 _QUEUED = '{"id": "<20261116.1@hablator.invalid>", "message": "Queued. Thank you."}'
@@ -30,23 +26,6 @@ _VALID = {
     "content": {"subject": "Backup finished", "body": "plain text", "body_html": "<p>rich</p>"},
     "channels": [{"channel": "email", "recipients": ["ops@example.com"]}],
 }
-
-
-@pytest.fixture
-async def api_container(mailgun_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
-    instance = Container(mailgun_settings)
-    try:
-        await clear_hub_tables(instance.engine)
-        yield instance
-    finally:
-        await instance.aclose()
-
-
-@pytest.fixture
-async def api_client(api_container: Container) -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=api_container.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        yield client
 
 
 def _expect_send(httpserver: HTTPServer, *, status: int = 200, body: str = _QUEUED) -> None:

@@ -39,3 +39,20 @@ def test_missing_api_token_fails_the_boot(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None, app_env="test")
+
+
+def test_ntfy_reads_the_spec_env_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTFY__BASE_URL", "http://ntfy.test:2586")
+    monkeypatch.setenv("NTFY__TOKEN", "tk_secret")
+
+    settings = Settings(_env_file=None, app_env="test")
+
+    assert settings.ntfy.base_url == "http://ntfy.test:2586"
+    assert settings.ntfy.token == "tk_secret"
+
+
+def test_missing_ntfy_token_fails_the_boot(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTFY__TOKEN", raising=False)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, app_env="test")

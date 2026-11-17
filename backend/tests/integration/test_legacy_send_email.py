@@ -32,8 +32,8 @@ _VALID_PAYLOAD = {
 
 
 @pytest.fixture
-async def legacy_container(mailgun_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
-    instance = Container(mailgun_settings)
+async def legacy_container(stub_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
+    instance = Container(stub_settings)
     try:
         await clear_hub_tables(instance.engine)
         yield instance

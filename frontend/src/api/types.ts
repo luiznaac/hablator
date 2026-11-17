@@ -80,6 +80,19 @@ export interface NotificationDetailResponse {
   deliveries: DeliveryResponse[];
 }
 
+export interface ChannelConfigRequestDTO {
+  provider: string;
+  config: Record<string, unknown>;
+}
+
+export interface ChannelConfigResponse {
+  channel: Channel;
+  provider: string | null;
+  configured: boolean;
+  config: Record<string, unknown> | null;
+  updated_at: string | null;
+}
+
 export interface ErrorItem {
   field: string;
   message: string;

@@ -21,6 +21,7 @@ from testcontainers.mysql import MySqlContainer
 from hablator.application.container import Container
 from hablator.application.settings import MySqlConfig, Settings
 from tests.docker_probe import DockerUnavailableError, require_docker
+from tests.fixtures import clear_hub_tables
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -70,8 +71,8 @@ def migrated_mysql(mysql: MySqlContainer) -> MySqlContainer:
 
 
 @pytest.fixture
-def mailgun_settings(settings: Settings, httpserver: HTTPServer) -> Settings:
-    """Point the Mailgun adapter at the per-test stub server."""
+def stub_settings(settings: Settings, httpserver: HTTPServer) -> Settings:
+    """Point both provider adapters at the per-test stub server."""
     return settings.model_copy(
         update={
             "mailgun": settings.mailgun.model_copy(
@@ -81,7 +82,13 @@ def mailgun_settings(settings: Settings, httpserver: HTTPServer) -> Settings:
                     "from_email": "hablator@hablator.invalid",
                     "bcc_email": "hablator-archive@hablator.invalid",
                 }
-            )
+            ),
+            "ntfy": settings.ntfy.model_copy(
+                update={
+                    "base_url": httpserver.url_for("/"),
+                    "token": "dev-hablator-ntfy-token",
+                }
+            ),
         }
     )
 
@@ -112,5 +119,23 @@ async def container(settings: Settings, migrated_mysql: MySqlContainer) -> Async
 @pytest.fixture
 async def client(container: Container) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=container.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
+        yield http_client
+
+
+@pytest.fixture
+async def api_container(stub_settings: Settings, migrated_mysql: MySqlContainer) -> AsyncIterator[Container]:
+    """The real app with both providers pointed at the stub server, on an empty schema."""
+    instance = Container(stub_settings)
+    try:
+        await clear_hub_tables(instance.engine)
+        yield instance
+    finally:
+        await instance.aclose()
+
+
+@pytest.fixture
+async def api_client(api_container: Container) -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=api_container.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http_client:
         yield http_client

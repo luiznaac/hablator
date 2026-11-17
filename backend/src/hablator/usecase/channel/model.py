@@ -11,6 +11,9 @@ from enum import StrEnum
 
 MAX_RECIPIENTS = 50
 
+type ProviderConfigMapping = Mapping[str, object]
+"""The non-secret provider config: a string-keyed mapping the adapter validates and normalizes."""
+
 
 class Channel(StrEnum):
     """The delivery medium. SMS and voice exist only in the vocabulary in this phase."""
@@ -52,8 +55,30 @@ class ProviderConfig:
 
     channel: Channel
     provider: str
-    config: Mapping[str, object]
+    config: ProviderConfigMapping
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelConfigView:
+    """One row of the admin channel listing: the active provider and its non-secret config."""
+
+    channel: Channel
+    provider: str | None
+    config: ProviderConfigMapping | None
+    updated_at: datetime | None
+
+    @property
+    def configured(self) -> bool:
+        return self.provider is not None
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelConfigUpsert:
+    """The result of an upsert: the stored view and whether it created the row."""
+
+    view: ChannelConfigView
+    created: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,4 +119,4 @@ class ChannelMessage:
     recipients: tuple[Recipient, ...]
     content: Content
     options: Mapping[str, object]
-    config: Mapping[str, object]
+    config: ProviderConfigMapping

@@ -8,6 +8,7 @@ from hablator.usecase.channel.model import (
     Channel,
     ChannelMessage,
     ProviderConfig,
+    ProviderConfigMapping,
     ProviderResult,
     RetryPolicy,
 )
@@ -16,13 +17,18 @@ from hablator.usecase.channel.model import (
 class IChannelProvider(Protocol):
     """One concrete provider for one channel. Adapters normalize; they never decide retriability.
 
-    `prepare` is the adapter's own validation seam: it fills the channel's defaults (an email
+    `validate_config` is the adapter's own config-shape seam, used by the admin API before a
+    provider config row is written; it returns the normalized non-secret mapping.
+
+    `prepare` is the adapter's own request seam: it fills the channel's defaults (an email
     delivery may take its recipients from provider config) and rejects a request the channel
     cannot carry, before anything is persisted.
     """
 
     channel: Channel
     name: str
+
+    def validate_config(self, config: ProviderConfigMapping) -> ProviderConfigMapping: ...
 
     def prepare(self, message: ChannelMessage) -> ChannelMessage: ...
 

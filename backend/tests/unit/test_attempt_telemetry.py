@@ -79,3 +79,30 @@ def test_a_misconfiguration_failure_is_an_error(telemetry: Telemetry, status: in
     record = log_records(telemetry)[0].log_record
     assert record.body == "channel.attempt.failed"
     assert record.severity_text == "ERROR"
+
+
+def test_the_push_channel_reuses_the_instruments(telemetry: Telemetry) -> None:
+    AttemptTelemetry(telemetry.meter).record(
+        channel=Channel.PUSH,
+        provider="ntfy",
+        succeeded=True,
+        retriable=False,
+        provider_status=200,
+        error_kind=None,
+        delivery_id=9,
+        attempt_number=1,
+        duration_seconds=0.1,
+    )
+
+    counter = metric(telemetry, "notification.attempts").data.data_points[0]
+    assert counter.attributes == {
+        "channel": "push",
+        "provider": "ntfy",
+        "outcome": "succeeded",
+        "retriable": False,
+    }
+    histogram = metric(telemetry, "notification.attempt.duration").data.data_points[0]
+    assert histogram.attributes == {"channel": "push", "provider": "ntfy", "outcome": "succeeded"}
+    record = log_records(telemetry)[0].log_record
+    assert record.body == "channel.attempt.succeeded"
+    assert _CONTENT_ATTRIBUTES.isdisjoint(record.attributes)

@@ -54,6 +54,17 @@ class MailgunConfig(BaseModel):
     )
 
 
+class NtfyConfig(BaseModel):
+    """The typed reader of the push channel's env keys (`NTFY__*`).
+
+    `token` is the provider secret and has no default: a missing value fails the boot loudly.
+    `base_url` is the ntfy server root the adapter publishes its JSON to.
+    """
+
+    base_url: str = "http://localhost:2586"
+    token: str
+
+
 class AuthConfig(BaseModel):
     """The single Bearer token the new API requires (`AUTH__API_TOKEN`, no default)."""
 
@@ -104,9 +115,10 @@ class Settings(BaseSettings):
     otel_batch_schedule_delay: int = Field(default=5000, validation_alias="OTEL_BLRP_SCHEDULE_DELAY")
     otel_metric_export_interval: int = Field(default=60000, validation_alias="OTEL_METRIC_EXPORT_INTERVAL")
 
-    # Both secret groups have no default: a missing key or token fails the boot loudly instead
+    # Every secret group has no default: a missing key or token fails the boot loudly instead
     # of sending unauthenticated or serving the hub open to the LAN.
     mailgun: MailgunConfig
+    ntfy: NtfyConfig
     auth: AuthConfig
 
     mysql: MySqlConfig = Field(default_factory=MySqlConfig)

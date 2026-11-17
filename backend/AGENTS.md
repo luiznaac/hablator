@@ -21,9 +21,9 @@ application  ->  httpapi     ->  usecase  <-  persistence
 
 One installable package, `src/hablator/`, with one sub-package per layer:
 
-- **`usecase/`** — the core. Domain models, ports (`IHealthChecker`, `IHealthGateway`, `ITransactionTemplate`, the hub's `INotificationRepository`/`IDeliveryRepository`/`IProviderConfigRepository`/`IRetryPolicyRepository`/`IDeliveryDispatcher`/`IChannelProvider`) and services — see [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for their shape. The hub lives in the slices `channel/` (vocabulary, one provider port, registry, retriability), `notification/` (the aggregate, derived status, lifecycle `transition`, history query) and `delivery/` (the dispatcher); the static test `tests/unit/test_architecture.py` enforces the `delivery -> notification -> channel` DAG. Depends on **nothing** infrastructural — `import-linter` forbids importing `fastapi`, `sqlalchemy`, `httpx`, `pydantic`, `uvicorn` here. `commons/` holds genuinely cross-cutting helpers only (`time.IClock`, `logging.get_logger`, `asyncx.map_async`, `exceptions`).
+- **`usecase/`** — the core. Domain models, ports (`IHealthChecker`, `IHealthGateway`, `ITransactionTemplate`, the hub's `INotificationRepository`/`IDeliveryRepository`/`IProviderConfigRepository`/`IRetryPolicyRepository`/`IDeliveryDispatcher`/`IChannelProvider`) and services — see [`CODING_STANDARDS.md`](CODING_STANDARDS.md) for their shape. The hub lives in the slices `channel/` (vocabulary, one provider port, registry, retriability, the admin `ChannelConfigService`), `notification/` (the aggregate, derived status, lifecycle `transition`, history query) and `delivery/` (the dispatcher); the static test `tests/unit/test_architecture.py` enforces the `delivery -> notification -> channel` DAG. Depends on **nothing** infrastructural — `import-linter` forbids importing `fastapi`, `sqlalchemy`, `httpx`, `pydantic`, `uvicorn` here. `commons/` holds genuinely cross-cutting helpers only (`time.IClock`, `logging.get_logger`, `asyncx.map_async`, `exceptions`).
 - **`persistence/`** — SQLAlchemy 2 async implementations of `usecase` ports against MySQL. `configuration/transaction.py` implements `ITransactionTemplate`; repositories call `current_session()` to get the session bound to the running transaction. The five hub tables are typed `Mapped[...]` entities in `notification/entity.py` (notification, delivery, attempt) and `channel/entity.py` (provider_config, retry_policy); `notification/repository.py` and `channel/repository.py` implement the ports, and `configuration/timestamps.py` is the naive-UTC/aware-UTC boundary. `configuration/base.py` holds the `DeclarativeBase`.
-- **`gateway/`** — outbound HTTP (httpx). One shared `AsyncClient` from `configuration/http_client.py`, injected everywhere. `AppHealthGateway` + `HttpClientHealthCheck` are the worked example.
+- **`gateway/`** — outbound HTTP (httpx). One shared `AsyncClient` from `configuration/http_client.py`, injected everywhere. `AppHealthGateway` + `HttpClientHealthCheck` are the worked example; `email/mailgun_provider.py` and `push/ntfy_provider.py` are the two channel adapters (each owns its `validate_config` and `prepare` seams).
 - **`httpapi/`** — FastAPI. Each controller is a class with a `router() -> APIRouter` method (`IController`, the `ControllerTemplate` analogue). `configuration/server.py` mounts every controller the composition root passes it and installs the domain-exception handlers. DTOs live in `schema.py`.
 - **`application/`** — the composition root. `settings.py` (pydantic-settings, `APP_ENV` profile), `container.py`, `boot.py`.
 
@@ -86,7 +86,7 @@ uv run poe test             # everything
 
 ## Configuration
 
-`src/hablator/application/settings.py` (pydantic-settings, `APP_ENV` profile). Every value has a default except the two secrets `MAILGUN__API_KEY` and `AUTH__API_TOKEN`; a gitignored `.env` may override locally (see `.env.example`). Nested env vars use `__`:
+`src/hablator/application/settings.py` (pydantic-settings, `APP_ENV` profile). Every value has a default except the three secrets — `MAILGUN__API_KEY`, `NTFY__TOKEN` and `AUTH__API_TOKEN` — whose absence fails the boot loudly; a gitignored `.env` may override locally (see `.env.example`). Nested env vars use `__`:
 
 | Key | Env var | Default |
 |---|---|---|
@@ -103,12 +103,14 @@ uv run poe test             # everything
 | `mailgun.api_url` | `MAILGUN__API_URL` | the Mailgun v3 send endpoint on the `.invalid` fixture domain |
 | `mailgun.from_email` | `MAILGUN__FROM` | the `.invalid` fixture sender |
 | `mailgun.bcc_email` | `MAILGUN__BCC` | the `.invalid` fixture archive address |
+| `ntfy.base_url` | `NTFY__BASE_URL` | `http://localhost:2586` (the ntfy server root) |
+| `ntfy.token` | `NTFY__TOKEN` | **none — required** (the push provider secret) |
 | `auth.api_token` | `AUTH__API_TOKEN` | **none — required** (the new API's Bearer token) |
 | `telemetry.service_name` | `OTEL_SERVICE_NAME` | `hablator` (the lane token) |
 | `telemetry.endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` in dev; **required in prod** |
 | `telemetry.console` | `TELEMETRY_CONSOLE` | `false` (dev-only console exporters) |
 
-`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.mailgun` is the typed reader of the email channel's `MAILGUN__*` keys and `Settings.auth` the API's `AUTH__API_TOKEN`; `DatabaseSettings` is the DB-only reader Alembic uses so a migration never requires the app's secrets.
+`Settings.app_host` is what the composition root hands `AppHealthGateway`: an explicit `GATEWAYS__APP__HOST` wins (container/deploy), otherwise the self-health URL follows `HTTP_PORT`. `Settings.telemetry` is the typed reader of the standard `OTEL_*` names — do not read `os.environ` for telemetry anywhere else. `Settings.mailgun` is the typed reader of the email channel's `MAILGUN__*` keys, `Settings.ntfy` the push channel's `NTFY__*` keys and `Settings.auth` the API's `AUTH__API_TOKEN`; `DatabaseSettings` is the DB-only reader Alembic uses so a migration never requires the app's secrets. The non-secret provider config (email `from`/`bcc`, push `topic`/`default_priority`) lives in the database, written through `PUT /channels/{channel}`. The ntfy server setup is the operator checklist in [docs/ntfy-provisioning.md](../docs/ntfy-provisioning.md).
 
 ### Ports (canonical family table)
 

@@ -154,6 +154,13 @@ class InMemoryProviderConfigRepository:
     async def get(self, channel: Channel) -> ProviderConfig | None:
         return self._configs.get(channel)
 
+    async def upsert(self, config: ProviderConfig) -> ProviderConfig:
+        self._configs[config.channel] = config
+        return config
+
+    async def delete(self, channel: Channel) -> None:
+        self._configs.pop(channel, None)
+
 
 class FakeChannelProvider:
     """A provider that reports a fixed result (or raises) and records what it was sent."""
@@ -182,6 +189,9 @@ class FakeChannelProvider:
 
     def prepare(self, message: ChannelMessage) -> ChannelMessage:
         return message
+
+    def validate_config(self, config: Mapping[str, object]) -> Mapping[str, object]:
+        return dict(config)
 
     async def send(self, message: ChannelMessage) -> ProviderResult:
         if self.hook is not None:

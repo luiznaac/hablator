@@ -270,3 +270,49 @@ async def test_a_generic_client_error_is_an_http_status_failure(httpserver: HTTP
     assert result.error_kind is ErrorKind.HTTP_STATUS
     assert result.provider_status == 400
     assert result.error_message == "bad request"
+
+
+def test_validate_config_accepts_from_and_bcc(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    validated = provider.validate_config({"from": "ops@example.com", "bcc": "archive@example.com"})
+
+    assert validated == {"from": "ops@example.com", "bcc": "archive@example.com"}
+
+
+def test_validate_config_requires_from(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    with pytest.raises(DomainError):
+        provider.validate_config({"bcc": "archive@example.com"})
+
+
+def test_validate_config_rejects_an_empty_from(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    with pytest.raises(DomainError):
+        provider.validate_config({"from": "   "})
+
+
+def test_validate_config_names_an_unknown_key(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    with pytest.raises(DomainError) as raised:
+        provider.validate_config({"from": "ops@example.com", "sender": "typo@example.com"})
+
+    assert "sender" in str(raised.value)
+
+
+def test_validate_config_accepts_the_recipients_default(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    validated = provider.validate_config({"from": "ops@example.com", "recipients": ["default@example.com"]})
+
+    assert validated["recipients"] == ["default@example.com"]
+
+
+def test_validate_config_rejects_more_than_fifty_default_recipients(httpserver: HTTPServer) -> None:
+    provider = _provider(httpserver)
+
+    with pytest.raises(DomainError):
+        provider.validate_config({"from": "ops@example.com", "recipients": [f"a{i}@example.com" for i in range(51)]})
