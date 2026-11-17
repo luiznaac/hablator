@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 # The test profile never exports: set it before any test module imports the app.
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http,database")
-# The two secrets have no default in code; tests supply the dev fixtures.
+# The secrets have no default in code; tests supply the dev fixtures.
 os.environ.setdefault("MAILGUN__API_KEY", "dev-hablator-mailgun-key")
+os.environ.setdefault("NTFY__TOKEN", "dev-hablator-ntfy-token")
 os.environ.setdefault("AUTH__API_TOKEN", "dev-hablator-api-token")
 
 _LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain"})

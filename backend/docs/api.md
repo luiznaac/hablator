@@ -1,8 +1,9 @@
 # Hablator HTTP API
 
 The consumer document for the hub's notification API. It covers `POST /notifications`,
-`GET /notifications`, `GET /notifications/{id}` and `POST /deliveries/{id}/retry`, plus the error
-model every endpoint shares.
+`GET /notifications`, `GET /notifications/{id}`, `POST /deliveries/{id}/retry`, the
+channel-configuration admin surface (`GET`/`PUT`/`DELETE /channels`), and the error model every
+endpoint shares.
 
 ## Base URL and authentication
 
@@ -44,16 +45,33 @@ the delivery outcome** — read `status` (and each delivery's `status`) to learn
 | `content.body` | Required, at most 256 KiB (UTF-8 bytes). Plain text. |
 | `content.body_html` | Optional, at most 256 KiB. The rich alternative. The hub never renders. |
 | `channels` | Required, 1–4 entries, one per channel. A duplicate channel is `400`. |
-| `channels[].channel` | `email`, `push`, `sms` or `voice`. `sms`/`voice` (and, in this slice, `push`) answer `422` until a provider is configured. |
-| `channels[].recipients` | Email only, optional, 1–50 addresses. Omitted means the provider config's `recipients` default; with neither, `422`. |
+| `channels[].channel` | `email`, `push`, `sms` or `voice`. `sms`/`voice` answer `422`; `push` answers `422` until a push provider is configured (see [Channels](#channels)). |
+| `channels[].recipients` | Email only, optional, 1–50 addresses. Omitted means the provider config's `recipients` default; with neither, `422`. **Rejected for push** (`422`). |
 | `channels[].content` | Optional partial override merged over the base content for that delivery. `body_html: null` removes the HTML part. |
-| `channels[].options` | Free-form object, adapter-validated. Email takes none in v1; any key is `422`. |
+| `channels[].options` | Free-form object, adapter-validated. Email takes none in v1; any key is `422`. Push accepts `priority`, `tags` and `click` (see below). |
 
 Unknown fields anywhere are `422 validation_error`. There is no `metadata` field. A request body
 over 1 MiB is `413`; a non-JSON `Content-Type` is `415`.
 
 `body_text` and `body_html` both present go to Mailgun as `multipart/alternative`; a single part
 sends text-only or HTML-only. The new API path never derives a plain part from HTML.
+
+### Push channel
+
+A push delivery is one JSON publish to the ntfy server root. The **topic comes only from provider
+config** (a request cannot choose one); `subject` maps to `title` and `body` to `message`.
+
+| Rule | Value |
+|---|---|
+| `subject` → `title` | At most 1 KiB (UTF-8 bytes). |
+| `body` → `message` | At most 4,096 bytes. |
+| `options.priority` | `1`–`5` or the alias `min` / `low` / `default` / `high` / `urgent`, normalized to the integer; defaults to the provider config's `default_priority`, else `3`. |
+| `options.tags` | A non-empty list of non-empty strings. |
+| `options.click` | An absolute `http(s)` URL. |
+
+A violation — an oversize title/message, an unknown option, a bad priority/tag/click, a
+`recipients` entry, or a push channel with no configured provider — rejects the **whole request**
+with `422 domain_error` and creates nothing. Content is never truncated or converted.
 
 ### Response — `201 Created`
 
@@ -202,6 +220,59 @@ curl -sS -X POST -H "Authorization: Bearer $AUTH__API_TOKEN" \
   http://localhost:8140/deliveries/77/retry
 ```
 
+## Channels
+
+The admin surface for a channel's provider configuration. Provider **secrets stay in the
+environment**; only the non-secret config is written here, and the API rejects a secret-shaped key.
+
+### `GET /channels`
+
+Every channel in the vocabulary — configured or not — in vocabulary order:
+
+```json
+[
+  { "channel": "email", "provider": "mailgun", "configured": true,
+    "config": { "from": "ops@example.com", "bcc": "archive@example.com" },
+    "updated_at": "2026-11-17T09:12:44.123456Z" },
+  { "channel": "push", "provider": null, "configured": false, "config": null, "updated_at": null },
+  { "channel": "sms", "provider": null, "configured": false, "config": null, "updated_at": null },
+  { "channel": "voice", "provider": null, "configured": false, "config": null, "updated_at": null }
+]
+```
+
+`configured` is whether a config row exists. An unconfigured **email** channel still sends through
+the environment's `MAILGUN__*` fallback; an unconfigured **push** channel answers `422`. No secret
+value ever appears here.
+
+### `PUT /channels/{channel}`
+
+A full-replace upsert of `{provider, config}`: `201` when it creates the row, `200` when it
+replaces one.
+
+```bash
+curl -sS -X PUT http://localhost:8140/channels/push \
+  -H "Authorization: Bearer $AUTH__API_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"provider": "ntfy", "config": {"topic": "hablator", "default_priority": 3}}'
+```
+
+| Rule | Value |
+|---|---|
+| `provider` | Must be registered for the channel: `mailgun` for email, `ntfy` for push. `sms`/`voice` and an unknown channel are `422`. |
+| Email `config` | `from` required; `bcc` optional; `recipients` optional (the per-delivery default, 1–50). |
+| Push `config` | `topic` required; `default_priority` optional, an integer 1–5. |
+| Unknown key | `422 domain_error` naming the key. |
+| Secret-shaped key | `api_key`, `token`, `secret`, `password` or `auth` anywhere in a key name is `422 domain_error` naming the environment variable instead (`MAILGUN__API_KEY`, `NTFY__TOKEN`). |
+
+A config change is logged at INFO as `config.channel.updated` with the channel and provider —
+never the values.
+
+### `DELETE /channels/{channel}`
+
+Removes the row and answers `204`; deleting an unconfigured channel is a no-op (`204` too). After
+the delete, email falls back to the environment and push answers `422` until it is configured
+again.
+
 ## Error model
 
 Errors are JSON with a stable machine-readable `code`, a human `detail`, and — for validation —
@@ -231,8 +302,8 @@ FastAPI's default validation body never leaks.
 
 ## Not in this slice
 
-Channel configuration (`GET`/`PUT`/`DELETE /channels`) is decided in the spec and lands in a later
-slice.
+SMS and voice providers exist only in the vocabulary and answer `422`. The push provider's
+server-side setup is the operator's [ntfy provisioning checklist](../../docs/ntfy-provisioning.md).
 
 The legacy `POST /send-email` request/response contract is preserved and pinned by its own golden
 fixtures. The shared recipients cap (1–50) applies there too; a request it rejects keeps the

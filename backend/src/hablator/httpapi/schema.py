@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
 
-from hablator.usecase.channel.model import MAX_RECIPIENTS, Channel, Content, Recipient
+from hablator.usecase.channel.model import MAX_RECIPIENTS, Channel, ChannelConfigView, Content, Recipient
 from hablator.usecase.commons.exceptions import require_id
 from hablator.usecase.health.checker import HealthCheckResult
 from hablator.usecase.notification.model import (
@@ -211,6 +211,33 @@ class NotificationDetailResponse(BaseModel):
             deliveries=[
                 DeliveryResponse.from_domain(delivery.delivery, delivery.attempts) for delivery in detail.deliveries
             ],
+        )
+
+
+class ChannelConfigRequestDTO(BaseModel):
+    """The full-replace body of `PUT /channels/{channel}`: the provider and its non-secret config."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    config: dict[str, Any]
+
+
+class ChannelConfigResponse(BaseModel):
+    channel: Channel
+    provider: str | None
+    configured: bool
+    config: dict[str, Any] | None
+    updated_at: UtcDateTime | None
+
+    @classmethod
+    def from_domain(cls, view: ChannelConfigView) -> Self:
+        return cls(
+            channel=view.channel,
+            provider=view.provider,
+            configured=view.configured,
+            config=dict(view.config) if view.config is not None else None,
+            updated_at=view.updated_at,
         )
 
 

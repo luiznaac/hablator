@@ -27,8 +27,10 @@ from hablator.gateway.configuration.http_client import build_http_client
 from hablator.gateway.email.mailgun_provider import MailgunEmailProvider
 from hablator.gateway.health.app_health_gateway import AppHealthGateway
 from hablator.gateway.health.http_client_health_check import HttpClientHealthCheck
+from hablator.gateway.push.ntfy_provider import NtfyPushProvider
 from hablator.httpapi.configuration.server import build_app, install_request_context_middleware
 from hablator.httpapi.controller.base import IController
+from hablator.httpapi.controller.channel_controller import ChannelController
 from hablator.httpapi.controller.health_controller import HealthController
 from hablator.httpapi.controller.legacy_email_controller import LegacyEmailController
 from hablator.httpapi.controller.notification_controller import NotificationController
@@ -38,6 +40,7 @@ from hablator.persistence.configuration.transaction import SqlAlchemyTransaction
 from hablator.persistence.health.mysql_health_check import MySqlConnectionHealthCheck
 from hablator.persistence.notification.repository import NotificationRepository
 from hablator.usecase.channel.registry import ChannelRegistry
+from hablator.usecase.channel.service import ChannelConfigService
 from hablator.usecase.channel.telemetry import AttemptTelemetry
 from hablator.usecase.commons.time import IClock, SystemClock
 from hablator.usecase.delivery.dispatcher import DeliveryDispatcher
@@ -89,6 +92,13 @@ class Container:
                 bcc_email=settings.mailgun.bcc_email,
             )
         )
+        self.channel_registry.register(
+            NtfyPushProvider(
+                self.http_client,
+                base_url=settings.ntfy.base_url,
+                token=settings.ntfy.token,
+            )
+        )
         self.attempt_telemetry = AttemptTelemetry(self.telemetry.meter)
         self.notification_repository = NotificationRepository()
         self.provider_config_repository = ProviderConfigRepository()
@@ -109,12 +119,19 @@ class Container:
             registry=self.channel_registry,
             provider_configs=self.provider_config_repository,
         )
+        self.channel_config_service = ChannelConfigService(
+            clock=self.clock,
+            transaction=self.transaction_template,
+            repository=self.provider_config_repository,
+            registry=self.channel_registry,
+        )
 
         # --- http layer ------------------------------------------------
         self.controllers: list[IController] = [
             HealthController(self.health_checkers, self.health_telemetry),
             LegacyEmailController(self.notification_service),
             NotificationController(self.notification_service, api_token=settings.auth.api_token),
+            ChannelController(self.channel_config_service, api_token=settings.auth.api_token),
         ]
 
         @asynccontextmanager

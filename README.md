@@ -43,11 +43,13 @@ A gitignored `.env` may override a host port locally; the committed defaults abo
 
 One image holds both processes — `uvicorn` (API) and `nginx` (the built SPA, which also reverse-proxies `/api` to uvicorn) — supervised by `supervisord`, on separate ports. The database is **not** in the image; the schema is applied by `python scripts/migrate.py` from `deploy/entrypoint.sh` before the app starts.
 
-The app runs as `APP_ENV=prod`, so it requires an OTLP endpoint, the email provider key and the API Bearer token. Export `OTEL_EXPORTER_OTLP_ENDPOINT` (for a Collector on the host, `http://host.docker.internal:4318`), `MAILGUN__API_KEY` (plus `MAILGUN__API_URL` / `MAILGUN__FROM` / `MAILGUN__BCC` when they differ from the fixtures) and `AUTH__API_TOKEN`. Without them the app's boot fails loudly; the `mysql` service alone still starts.
+The app runs as `APP_ENV=prod`, so it requires an OTLP endpoint, both provider secrets and the API Bearer token. Export `OTEL_EXPORTER_OTLP_ENDPOINT` (for a Collector on the host, `http://host.docker.internal:4318`), `MAILGUN__API_KEY` (plus `MAILGUN__API_URL` / `MAILGUN__FROM` / `MAILGUN__BCC` when they differ from the fixtures), `NTFY__BASE_URL` / `NTFY__TOKEN` and `AUTH__API_TOKEN`. Without them the app's boot fails loudly; the `mysql` service alone still starts. The push topic is non-secret provider config written through `PUT /channels/push`; the ntfy server itself is the operator's [provisioning checklist](docs/ntfy-provisioning.md).
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
 export MAILGUN__API_KEY=dev-hablator-mailgun-key
+export NTFY__BASE_URL=http://localhost:2586
+export NTFY__TOKEN=dev-hablator-ntfy-token
 export AUTH__API_TOKEN=dev-hablator-api-token
 docker compose up --build     # app + MySQL, full stack
 #   UI   -> http://localhost:8141

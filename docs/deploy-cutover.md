@@ -39,6 +39,10 @@ schema to be reachable at boot. The database is **not** in the image.
      `OTEL_SEMCONV_STABILITY_OPT_IN=http,database`
    - `AUTH__API_TOKEN` — the new API's Bearer token, required now that `POST /notifications`
      and `GET /notifications/{id}` ship.
+   - `NTFY__BASE_URL` / `NTFY__TOKEN` — the push channel's server root and `hablator-backend`
+     admin token (a secret, no default). Provision ntfy per
+     [ntfy-provisioning.md](ntfy-provisioning.md), then write the topic once through
+     `PUT /channels/push` (non-secret provider config).
 4. **Database** — create the `hablator` database with `utf8mb4` / `utf8mb4_0900_ai_ci` and
    register it in `restic_mysql_databases` (the migration creates the tables; the database itself
    is iac's).

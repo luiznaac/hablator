@@ -14,13 +14,15 @@ node <salgadinhos>/adapters/sandbox/run.mjs --stack python --workspace <repo> --
 node <salgadinhos>/adapters/sandbox/run.mjs --stack node --workspace <repo> -- npm --prefix frontend ci
 ```
 
-`mailgun-stub` stands in for the external Mailgun provider (the hub's only outbound third party in
-this slice): it answers `200` normally, and `500` the first time a `to` field contains `fail`, so
-one run produces a delivery that fails once and succeeds on retry — without leaving the machine.
+`mailgun-stub` stands in for the external Mailgun provider: it answers `200` normally, and `500` the
+first time a `to` field contains `fail`, so one run produces a delivery that fails once and
+succeeds on retry — without leaving the machine. The ntfy push provider is not stubbed here: an
+unconfigured push channel answers `422`, and configuring it through `PUT /channels/push` needs a
+reachable `NTFY__BASE_URL`.
 
 The `api` service runs with `APP_ENV=test`: the same app, but a single uvicorn process (no reload)
-and in-memory telemetry, so no Collector is needed. The two secrets it requires have no default in
-code; the start command supplies the dev fixtures inline.
+and in-memory telemetry, so no Collector is needed. The three secrets it requires have no default
+in code; the start command supplies the dev fixtures inline.
 
 ## mysql
 
@@ -48,7 +50,7 @@ code; the start command supplies the dev fixtures inline.
 
 | | |
 |---|---|
-| start | APP_ENV=test AUTH__API_TOKEN=dev-hablator-api-token MAILGUN__API_KEY=dev-hablator-mailgun-key MAILGUN__API_URL=http://127.0.0.1:8199/messages uv run poe run |
+| start | APP_ENV=test AUTH__API_TOKEN=dev-hablator-api-token MAILGUN__API_KEY=dev-hablator-mailgun-key MAILGUN__API_URL=http://127.0.0.1:8199/messages NTFY__TOKEN=dev-hablator-ntfy-token uv run poe run |
 | ready | http://localhost:8140/health |
 | port  | 8140 |
 | stop  | pkill -f "$(pwd)/.venv" \|\| true |

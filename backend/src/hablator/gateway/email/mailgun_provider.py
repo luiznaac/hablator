@@ -8,17 +8,17 @@ come from provider config, with the env-backed defaults as the fallback.
 from __future__ import annotations
 
 import base64
-import json
-from collections.abc import Mapping
 from dataclasses import replace
 
 import httpx
 
+from hablator.gateway.configuration.provider_response import provider_result, transport_failure
 from hablator.usecase.channel.model import (
     MAX_RECIPIENTS,
     Channel,
     ChannelMessage,
     ErrorKind,
+    ProviderConfigMapping,
     ProviderResult,
     Recipient,
 )
@@ -46,6 +46,28 @@ class MailgunEmailProvider:
         self._api_key = api_key
         self._from_email = from_email
         self._bcc_email = bcc_email
+
+    def validate_config(self, config: ProviderConfigMapping) -> ProviderConfigMapping:
+        """Validate and normalize an email provider config before it is stored.
+
+        Raises:
+            DomainError: on an unknown key, a missing `from`, or a malformed `bcc`/`recipients`.
+        """
+        unknown = sorted(set(config) - _CONFIG_KEYS)
+        if unknown:
+            raise DomainError(f"unknown email provider config key: '{unknown[0]}'")
+        sender = config.get("from")
+        if not isinstance(sender, str) or not sender.strip():
+            raise DomainError("email provider config requires a non-empty 'from' address")
+        normalized: dict[str, object] = {"from": sender.strip()}
+        if "bcc" in config:
+            bcc = config["bcc"]
+            if not isinstance(bcc, str) or not bcc.strip():
+                raise DomainError("email provider config 'bcc' must be a non-empty address")
+            normalized["bcc"] = bcc.strip()
+        if "recipients" in config:
+            normalized["recipients"] = _validated_recipients(config["recipients"])
+        return normalized
 
     def prepare(self, message: ChannelMessage) -> ChannelMessage:
         """Validate the email request and fill its recipient default from provider config.
@@ -81,26 +103,11 @@ class MailgunEmailProvider:
                 headers={"Authorization": f"Basic {authorization}"},
             )
         except httpx.TimeoutException as error:
-            return self._transport_failure(ErrorKind.TIMEOUT, error)
+            return transport_failure(_PROVIDER_NAME, ErrorKind.TIMEOUT, error)
         except httpx.RequestError as error:
-            return self._transport_failure(ErrorKind.NETWORK, error)
+            return transport_failure(_PROVIDER_NAME, ErrorKind.NETWORK, error)
 
-        body = response.text
-        if 200 <= response.status_code < 300:
-            return ProviderResult(
-                provider=_PROVIDER_NAME,
-                provider_status=response.status_code,
-                error_kind=None,
-                error_message=None,
-                provider_body=body,
-            )
-        return ProviderResult(
-            provider=_PROVIDER_NAME,
-            provider_status=response.status_code,
-            error_kind=ErrorKind.HTTP_STATUS,
-            error_message=_error_message(body),
-            provider_body=body,
-        )
+        return provider_result(_PROVIDER_NAME, response)
 
     def _form_fields(self, message: ChannelMessage) -> dict[str, str]:
         from_email = str(message.config.get("from", self._from_email))
@@ -121,31 +128,19 @@ class MailgunEmailProvider:
             fields["text"] = ""
         return fields
 
-    def _transport_failure(self, kind: ErrorKind, error: httpx.RequestError) -> ProviderResult:
-        return ProviderResult(
-            provider=_PROVIDER_NAME,
-            provider_status=None,
-            error_kind=kind,
-            error_message=str(error),
-            provider_body="",
-        )
+
+def _validated_recipients(value: object) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise DomainError("email provider config 'recipients' must be a non-empty list of addresses")
+    if not all(isinstance(address, str) and address.strip() for address in value):
+        raise DomainError("email provider config 'recipients' must be a non-empty list of addresses")
+    if len(value) > MAX_RECIPIENTS:
+        raise DomainError(f"email provider config allows at most {MAX_RECIPIENTS} recipients, got {len(value)}")
+    return [str(address).strip() for address in value]
 
 
-def _config_recipients(config: Mapping[str, object]) -> tuple[Recipient, ...]:
+def _config_recipients(config: ProviderConfigMapping) -> tuple[Recipient, ...]:
     configured = config.get("recipients")
     if not isinstance(configured, list):
         return ()
     return tuple(Recipient(str(address)) for address in configured if str(address))
-
-
-def _error_message(body: str) -> str:
-    """Mailgun's error body is usually `{"message": ...}` but can be a bare string."""
-    try:
-        parsed = json.loads(body)
-    except json.JSONDecodeError:
-        return body
-    if isinstance(parsed, dict):
-        message = parsed.get("message")
-        if isinstance(message, str):
-            return message
-    return body

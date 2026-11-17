@@ -61,13 +61,16 @@ services:
       - MYSQL__USER=root
       - MYSQL__PASSWORD=
       - MYSQL__DATABASE=hablator
-      # Email channel (`MAILGUN__*`) and the new API's Bearer token. MAILGUN__API_KEY and
-      # AUTH__API_TOKEN have no default in code, so an unset value fails the boot loudly;
-      # export both to run this stack.
+      # Email channel (`MAILGUN__*`), push channel (`NTFY__*`) and the new API's Bearer token.
+      # MAILGUN__API_KEY, NTFY__TOKEN and AUTH__API_TOKEN have no default in code, so an unset
+      # value fails the boot loudly; export all three to run this stack. The push topic is
+      # non-secret provider config, written through PUT /channels/push.
       - MAILGUN__API_KEY
       - MAILGUN__API_URL
       - MAILGUN__FROM
       - MAILGUN__BCC
+      - NTFY__BASE_URL
+      - NTFY__TOKEN
       - AUTH__API_TOKEN
     # Lets the OTLP endpoint default reach a Collector running on the host.
     extra_hosts:

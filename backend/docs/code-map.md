@@ -15,7 +15,7 @@ that dependencies point inward (`application → httpapi/persistence/gateway →
 delivery dispatcher, the health slice and the cross-cutting helpers. Imports no framework —
 `import-linter` forbids `fastapi`, `sqlalchemy`, `httpx`, `uvicorn` and `pydantic` here.
 **Files**: `usecase/notification/{model,ports,service}.py`; `usecase/delivery/{ports,dispatcher}.py`;
-`usecase/channel/{model,ports,classify,defaults,registry,telemetry}.py`;
+`usecase/channel/{model,ports,classify,defaults,registry,service,telemetry}.py`;
 `usecase/health/{checker,gateway,telemetry}.py`; `usecase/configuration/transaction.py`;
 `usecase/commons/{time,logging,request_context,asyncx,exceptions}.py`
 **Seam(s)**:
@@ -31,14 +31,21 @@ delivery dispatcher, the health slice and the cross-cutting helpers. Imports no 
   provider call runs outside any transaction; each delivery gets its own transaction for the
   `in_progress`/final transitions and its Attempt. A raising provider becomes a non-retriable
   `unexpected` attempt (logged at ERROR). Owns attempt telemetry.
-- **`IChannelProvider`** (`channel/ports.py`) — `prepare(message)` is the adapter's own validation
-  seam (fills channel defaults, rejects a request the channel cannot carry) and
+- **`IChannelProvider`** (`channel/ports.py`) — `validate_config(config)` is the adapter's own
+  config-shape seam (used by the admin API before a row is written), `prepare(message)` is the
+  request seam (fills channel defaults, rejects a request the channel cannot carry) and
   `send(message) -> ProviderResult` normalizes the provider response. Adapters never decide
   retriability.
 - **`classify()`** (`channel/classify.py`) — the one retriability rule: timeout/network, 420/429
   or any 5xx.
 - **`ChannelRegistry`** (`channel/registry.py`) + **`provider_name_for`** (`channel/defaults.py`) —
-  the `(channel, provider) → provider` map and the one table shared by validation and dispatch.
+  the `(channel, provider) → provider` map and the one table shared by validation and dispatch;
+  email falls back to `mailgun`, push has no default (an unconfigured push channel is `422`).
+- **`ChannelConfigService`** (`channel/service.py`) — the admin surface behind
+  `GET`/`PUT`/`DELETE /channels`: lists the whole vocabulary, full-replace upserts (a registered
+  provider, a secret-shaped key rejected by naming the env var, the shape delegated to the
+  adapter's `validate_config`), idempotent deletes, and the `config.channel.updated` log with
+  channel and provider — never values.
 - **`AttemptTelemetry`** (`channel/telemetry.py`) — the attempt counter/histogram and the
   succeeded/failed events; 401/403 log at ERROR, never subject/body/recipient.
 - **`IHealthChecker` / `IHealthGateway` / `HealthTelemetry`** (`health/`) — the scaffold's worked
@@ -71,7 +78,8 @@ base and the naive-UTC conversion.
 ### `gateway/` — outbound HTTP
 **Purpose**: adapters for external systems, over one shared `httpx.AsyncClient`.
 **Files**: `gateway/configuration/http_client.py`;
-`gateway/email/mailgun_provider.py`; `gateway/health/{app_health_gateway,http_client_health_check}.py`
+`gateway/email/mailgun_provider.py`; `gateway/push/ntfy_provider.py`;
+`gateway/health/{app_health_gateway,http_client_health_check}.py`
 **Seam(s)**:
 - **Client seam** — `build_http_client()` produces the single `AsyncClient` (5 s connect / 10 s
   read) the composition root injects everywhere, closes on shutdown, and adds an outbound
@@ -80,13 +88,18 @@ base and the naive-UTC conversion.
   `api:<key>`; `from`/`bcc` from provider config with `MAILGUN__*` fallback; `o:tracking=no`; both
   parts → multipart, one part → text-only or HTML-only; non-2xx and transport failures normalize
   to `ProviderResult`.
+- **ntfy adapter** (`push/ntfy_provider.py`) — one JSON publish to the server root with a Bearer
+  token, `follow_redirects=False`; the topic comes only from provider config, `subject` → `title`
+  (≤ 1 KiB), `body` → `message` (≤ 4,096 bytes); `priority`/`tags`/`click` are the only options,
+  with the aliases normalized to 1–5 and the config `default_priority` as the fallback;
+  `recipients` are rejected. Non-2xx and transport failures normalize to `ProviderResult`.
 - **Health gateway** — `AppHealthGateway` calls the service's own `/health/internal`.
 
 ### `httpapi/` — FastAPI edge
 **Purpose**: the HTTP surface — controllers, the edge DTOs, auth and the body guards, and the
 domain-exception handlers.
 **Files**: `httpapi/configuration/{server,telemetry,auth,guards}.py`;
-`httpapi/controller/{base,health_controller,legacy_email_controller,notification_controller}.py`;
+`httpapi/controller/{base,health_controller,legacy_email_controller,notification_controller,channel_controller}.py`;
 `httpapi/schema.py`; `httpapi/legacy_text.py`
 **Seam(s)**:
 - **Route seam** — `IController.router()` returns an `APIRouter`; `server.build_app` mounts every
@@ -95,6 +108,10 @@ domain-exception handlers.
   (Bearer + JSON/size guards, `201` + `Location` + the detail DTO), `GET /notifications` (query
   filters + offset page), `GET /notifications/{id}` (both reads share one representation) and
   `POST /deliveries/{id}/retry` (the delivery DTO after a synchronous attempt).
+- **`ChannelController`** (`controller/channel_controller.py`) — `GET /channels` (the whole
+  vocabulary), `PUT /channels/{channel}` (`201` create / `200` replace, JSON guard) and
+  `DELETE /channels/{channel}` (`204`, idempotent); an unknown channel name is a `422 domain_error`
+  before the service runs.
 - **Auth seam** — `configuration/auth.py`'s `bearer_auth` dependency enforces
   `AUTH__API_TOKEN` with a constant-time compare; the router carries it, so `/send-email`,
   `/health*`, `/docs` and `/openapi.json` stay open.
@@ -115,12 +132,13 @@ the FastAPI app and the settings.
 **Files**: `src/hablator/application/{settings,telemetry,container,boot}.py`
 **Seam(s)**:
 - **Composition seam** — `Container.__init__` builds telemetry first, then the engine, HTTP
-  client, repositories, the channel registry (Mailgun), the dispatcher, the notification service,
-  the controllers and the app; adding an adapter or endpoint is writing the class and adding one
-  line there.
+  client, repositories, the channel registry (Mailgun + ntfy), the dispatcher, the notification and
+  channel-config services, the controllers and the app; adding an adapter or endpoint is writing
+  the class and adding one line there.
 - **Config seam** — `Settings` reads `APP_ENV`, `HTTP_PORT`, `MYSQL__*`, `GATEWAYS__APP__HOST`,
-  `MAILGUN__*` (`api_key` required), `AUTH__API_TOKEN` (required) and the `telemetry.*` keys.
-  `DatabaseSettings` is the DB-only reader Alembic uses so a migration needs no app secret.
+  `MAILGUN__*` (`api_key` required), `NTFY__*` (`token` required), `AUTH__API_TOKEN` (required) and
+  the `telemetry.*` keys. `DatabaseSettings` is the DB-only reader Alembic uses so a migration
+  needs no app secret.
 - **Entry seam** — `boot.py` exposes `app` and `main()`, serving on `HTTP_PORT` with reload only in
   `dev` and `--no-access-log`; tests build their own `Container` with fakes and a `FixedClock`.
 
@@ -128,13 +146,15 @@ the FastAPI app and the settings.
 **Purpose**: unit specs (no Docker) and integration specs that boot the real app against a real
 MySQL and a stub Mailgun.
 **Files**: `tests/conftest.py` (the `no_network` autouse guard); `tests/fixtures.py`;
-`tests/unit/{test_notification_domain,test_channel_domain,test_notification_service,test_delivery_dispatcher,test_mailgun_provider,test_attempt_telemetry,test_settings,test_architecture,...}.py`;
-`tests/integration/{conftest,test_notifications_api,test_notification_history_api,test_delivery_retry_api,test_notification_repository,test_notification_history,test_dispatch_transaction,test_legacy_send_email,test_migrations,...}.py`
+`tests/unit/{test_notification_domain,test_channel_domain,test_notification_service,test_delivery_dispatcher,test_mailgun_provider,test_ntfy_provider,test_channel_config_service,test_attempt_telemetry,test_settings,test_architecture,...}.py`;
+`tests/integration/{conftest,test_notifications_api,test_notification_history_api,test_delivery_retry_api,test_channels_api,test_notification_repository,test_notification_history,test_dispatch_transaction,test_legacy_send_email,test_migrations,...}.py`
 **Seam(s)**: the HTTP boundary is the top seam (`test_notifications_api.py`,
-`test_notification_history_api.py`, `test_delivery_retry_api.py`, `test_legacy_send_email.py`); repository ports are pinned against real MySQL; adapters run against
-`pytest-httpserver`; services run with in-memory doubles. `no_network` rejects any non-loopback
-connection, so no test can reach a real provider. `uv run poe check` is the Docker-free fast gate;
-`uv run poe test` runs both lanes.
+`test_notification_history_api.py`, `test_delivery_retry_api.py`, `test_channels_api.py`,
+`test_legacy_send_email.py`); repository ports are pinned against real MySQL; adapters run against
+`pytest-httpserver`; services run with in-memory doubles. The shared `api_container`/`api_client`
+fixtures in `integration/conftest.py` point both adapters at the stub server. `no_network` rejects
+any non-loopback connection, so no test can reach a real provider. `uv run poe check` is the
+Docker-free fast gate; `uv run poe test` runs both lanes.
 
 ### `alembic/` + `scripts/` — the schema history
 **Purpose**: the versioned schema and the script that applies it.
