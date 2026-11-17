@@ -57,7 +57,7 @@ docker compose up --build     # app + MySQL, full stack
 docker compose up -d mysql    # just the DB (host :8142), for local `cd backend && uv run poe run`
 ```
 
-**Publishing:** after CI passes on a push to `master`, the dedicated `.github/workflows/docker-publish.yml` (triggered on `workflow_run` completion) builds and pushes `luiznaac/hablator-python:latest` and `:v<run-number>` (a sequential build number) to Docker Hub. Needs repo variables `DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`.
+**Publishing:** after CI passes on a push to `master`, the dedicated `.github/workflows/docker-publish.yml` (triggered on `workflow_run` completion) builds and pushes `luiznaac/hablator:latest` and `:v<run-number>` (a sequential build number) to Docker Hub. Needs repo variables `DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`.
 
 ## Checks
 
