@@ -31,11 +31,11 @@ cross-lane seam; each lane's own map carries its module detail.
 
 ### Repo root — one image, one toolchain, one CI
 **Purpose**: the script shims, the multi-stage image, the compose stack, the pre-commit hooks and the two workflows.
-**Files**: `package.json`; `Dockerfile`; `docker-compose.yml`; `.pre-commit-config.yaml`; `.github/workflows/ci.yml`; `.github/workflows/docker-publish.yml`; `.salgadinhos/ports.json`
+**Files**: `package.json`; `Dockerfile`; `docker-compose.yml`; `.pre-commit-config.yaml`; `scripts/release.sh`; `.github/workflows/ci.yml`; `.github/workflows/docker-publish.yml`; `.github/release.yml`; `CHANGELOG.md`; `.salgadinhos/ports.json`
 **Seam(s)**:
 - `package.json` is a shim only: `npm run check` mirrors pre-commit (backend `poe check` + frontend `check` + build), and `npm run db` / `npm run db:migrate` wrap compose and Alembic. The real toolchains are `uv` in `backend/` and `npm` in `frontend/`.
 - `Dockerfile` builds the single image (backend + built SPA); `docker-compose.yml` adds MySQL and publishes the assigned port block recorded in `.salgadinhos/ports.json`.
-- `ci.yml` runs the two lanes as independent jobs; `docker-publish.yml` builds and pushes the image on a green `workflow_run` for `master`.
+- `ci.yml` runs the two lanes as independent jobs; `docker-publish.yml` builds the image with `push: false` on pull requests and publishes only on a `v*` release tag (cut by `scripts/release.sh`), so a merge to `master` never publishes.
 
 ### `docs/` — the doc set
 **Purpose**: the reserved documentation layout and the flat topical docs.
@@ -48,4 +48,5 @@ cross-lane seam; each lane's own map carries its module detail.
 - `backend/src/hablator/application/boot.py` — the API process: `app` is what uvicorn imports and `main()` runs uvicorn on `HTTP_PORT`, both building the `Container`.
 - `frontend/index.html` → `frontend/src/main.tsx` → `frontend/src/App.tsx` — the SPA: mount React with the query client and the router, whose index route is `Console`.
 - `docker-compose.yml` — the full-stack local entry: the app image plus its MySQL sidecar.
+- `scripts/release.sh` — cut a release: validate the repository state, then create the `v*` tag and GitHub Release.
 - `package.json` scripts — the local dev entry: `npm run be:run` and `npm run fe:dev`.
