@@ -27,7 +27,9 @@ export them when they differ. The push topic is non-secret provider config writt
 
 ## Publish
 
-After CI passes on a push to `master`, `.github/workflows/docker-publish.yml` (triggered on
-`workflow_run` completion) builds and pushes `luiznaac/hablator:latest` and a `:v<run-number>` tag
-carrying the sequential build number, to Docker Hub. It needs repo variable `DOCKERHUB_USERNAME` and
-secret `DOCKERHUB_TOKEN`.
+A merge to `master` never publishes. `.github/workflows/docker-publish.yml` publishes
+`luiznaac/hablator` only on a deliberate `v*` release tag, pushed by `scripts/release.sh <version>`:
+it tags immutable semver, major.minor and short-SHA images, moving `latest` only on a release. On a
+pull request it builds the same image with `push: false`, so a broken Dockerfile fails CI before a
+release discovers it. Publishing needs repo variable `DOCKERHUB_USERNAME` and secret
+`DOCKERHUB_TOKEN`.
